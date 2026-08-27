@@ -1,8 +1,8 @@
 """Loading the sampled diffusion pools into the format the notebook's stitching code expects.
 
 Each specialist is sampled into ``data/pools/regime_k{k}/windows.npy`` of shape
-``(n_pool, seq_len, 1)``. The reference pipeline consumes a flat 1-D array per regime, so the windows
-are concatenated in order.
+``(n_pool, seq_len, 10)``. The HMM notebook consumes the A001 channel only (``channel=0``); correlation
+evaluation uses all ten channels.
 
 Concatenating independent windows leaves a discontinuity every ``seq_len`` steps. This is deliberate:
 the reference GAN has the same artifact, because ``recursive_simulator`` concatenates independent

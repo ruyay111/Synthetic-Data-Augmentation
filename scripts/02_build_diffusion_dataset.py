@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Stage 2: cut per-regime training windows for the diffusion specialists.
+"""Stage 2: cut per-regime multi-asset training windows for the diffusion specialists.
 
-Reads the cached regime labels from stage 1 and writes
+Reads cached A001 regime labels from stage 1, attaches the nine other ruya assets by date, and writes
 
-  data/processed/regime_windows/regime_{k}.npy   (n_windows, seq_len, 1)
+  data/processed/regime_windows/regime_{k}.npy   (n_windows, seq_len, 10)
   data/processed/regime_windows/manifest.json
 
-The manifest is the diagnostic to read before training: it reports how many windows each regime
-yielded, how many came from cyclic tiling of short segments, and whether the windowed moments match
-the corresponding slice of the source series.
+Regime labels are not recomputed. They are the A001 labels from stage 1, mapped onto the shorter date
+range where all ten assets have valid prices (2001 onward within the train split). Window values are
+raw log returns; ``Dataset_RegimeWindows`` applies quantile scaling during training.
 """
 
 from __future__ import annotations
@@ -22,15 +22,11 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from hmmdiff.config import config_path, load_config  # noqa: E402
-from hmmdiff.data import load_returns, train_returns  # noqa: E402
+from hmmdiff.data import align_train_diffusion_panel, load_returns  # noqa: E402
 from hmmdiff.regimes import load_labels  # noqa: E402
 from hmmdiff.windows import build_windows, save_windows  # noqa: E402
 
-# Stride-1 sliding windows overlap almost completely, so the raw window count overstates how much
-# independent data a specialist sees. The honest measure is how many non-overlapping seq_len windows
-# the regime's days could form. Upstream skips training a regime below 8 windows; we warn there.
 MIN_INDEPENDENT_WINDOWS = 8
-# Relative tolerance when comparing windowed variance against the source slice.
 MOMENT_TOLERANCE = 0.35
 
 
@@ -41,12 +37,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def report(manifest: dict) -> list[str]:
-    """Print the per-regime table and return any warnings raised by checkpoint 3."""
     warnings: list[str] = []
     seq_len = manifest["seq_len"]
     print(
         f"{'regime':>6} {'windows':>8} {'indep':>6} {'days':>6} {'segs':>5} {'>=seq':>6} "
-        f"{'tiled':>6} {'src var':>8} {'win var':>8}"
+        f"{'tiled':>6} {'A001 var':>10} {'win var':>10}"
     )
     for key in sorted(manifest["regimes"], key=int):
         row = manifest["regimes"][key]
@@ -54,7 +49,7 @@ def report(manifest: dict) -> list[str]:
         print(
             f"{key:>6} {row['n_windows']:>8} {independent:>6} {row['n_days']:>6} "
             f"{row['segments']:>5} {row['segments_long']:>6} {row['segments_tiled']:>6} "
-            f"{row['source_var']:>8.3f} {row['window_var']:>8.3f}"
+            f"{row['source_var']:>10.2e} {row['window_var']:>10.2e}"
         )
         if row["n_windows"] == 0:
             warnings.append(f"regime {key} produced no windows; it cannot be trained")
@@ -73,8 +68,8 @@ def report(manifest: dict) -> list[str]:
         denominator = max(abs(row["source_var"]), 1e-12)
         if abs(row["window_var"] - row["source_var"]) / denominator > MOMENT_TOLERANCE:
             warnings.append(
-                f"regime {key} windowed variance {row['window_var']:.3f} differs from the source "
-                f"slice {row['source_var']:.3f} by more than "
+                f"regime {key} windowed A001 variance {row['window_var']:.3f} differs from the "
+                f"source slice {row['source_var']:.3f} by more than "
                 f"{MOMENT_TOLERANCE:.0%}; the windows are not representative"
             )
     return warnings
@@ -85,11 +80,18 @@ def main() -> int:
     cfg = load_config(args.config)
 
     returns = load_returns(cfg)
-    series = train_returns(returns)
     regimes = load_labels(config_path(cfg, "regime_labels"))
+    panel, labels, dates = align_train_diffusion_panel(returns, regimes.labels, cfg)
 
-    print(f"building windows from {len(series)} training days, seq_len={cfg['diffusion']['seq_len']}")
-    windows, manifest = build_windows(series, regimes.labels, cfg)
+    print(
+        f"building windows from {len(panel)} aligned training days "
+        f"({dates[0].date()} to {dates[-1].date()}), "
+        f"{panel.shape[1]} assets, seq_len={cfg['diffusion']['seq_len']}"
+    )
+    print(f"assets: {', '.join(cfg['data']['asset_columns'])}")
+    windows, manifest = build_windows(panel, labels, cfg)
+    manifest["aligned_start"] = str(dates[0].date())
+    manifest["aligned_end"] = str(dates[-1].date())
 
     warnings = report(manifest)
     total = sum(int(block.shape[0]) for block in windows.values())

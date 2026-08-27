@@ -17,6 +17,19 @@ data:
   date_column: as_of
   price_column: A001
   skip_rows: 2100
+  # Ten-asset panel for diffusion specialists (ruya convention). Regime labels still come from A001
+  # alone in stage 1; stage 2 attaches these columns to each A001-labelled window.
+  asset_columns:
+    - A001
+    - A004
+    - A006
+    - A008
+    - A009
+    - A011
+    - A012
+    - A013
+    - A014
+    - A015
   # Fractions applied in sequence: outer split on the full return series, then inner split on train.
   train_fraction: 0.75
   train_val_fraction: 0.75
@@ -33,7 +46,7 @@ regimes:
 
 diffusion:
   seq_len: 128
-  enc_in: 1
+  enc_in: 10
   stride: 1
   # Cyclically repeat same-regime segments shorter than seq_len rather than dropping them.
   short_policy: tile
@@ -42,11 +55,8 @@ diffusion:
   train_epochs: 50
   learning_rate: 0.0027983303288563873
   lr_decay_rounds: 10
-  # Upstream uses 1.0-KL2_N+1.0-Corr+1.0-FFT. Corr matches the cross-channel correlation matrix, so
-  # with enc_in=1 it reduces the strictly-upper triangle of a 1x1 matrix, which is empty. The mean
-  # over an empty tensor is NaN on CPU and CUDA (MPS quietly returns 0.0), so the term is dropped:
-  # it is structurally vacuous here, not merely unhelpful. See README.md.
-  loss: 1.0-KL2_N+1.0-FFT
+  # Full ruya loss; Corr is meaningful at enc_in=10 because it matches cross-asset correlations.
+  loss: 1.0-KL2_N+1.0-Corr+1.0-FFT
   scale: quantile
 
 sampling:

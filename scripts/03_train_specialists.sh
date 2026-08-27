@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Stage 3: train one unconditional UniTST_MP diffusion specialist per volatility regime.
 #
-# Derived from train_specialist_diffusions.sh in the ruya tree. Differences: --enc_in 1 for the
-# univariate S&P 500 series, absolute paths (run.py chdirs to its own directory, so relative paths
-# would resolve against third_party/diffusion), and --skip_test because pools are sampled separately
-# by scripts/04_generate_pools.py.
+# Derived from train_specialist_diffusions.sh in the ruya tree. Uses the ten-asset regime windows from
+# stage 2 (enc_in=10, full Corr loss). Absolute paths are required because run.py chdirs to its own
+# directory. --skip_test because pools are sampled separately by scripts/04_generate_pools.py.
 #
 # Environment overrides:
 #   PYTHON        interpreter to use                (default: python)

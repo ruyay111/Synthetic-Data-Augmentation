@@ -106,6 +106,66 @@ def load_returns(cfg: dict[str, Any]) -> pd.DataFrame:
     return pd.read_parquet(path)
 
 
+def asset_columns(cfg: dict[str, Any]) -> list[str]:
+    return list(cfg["data"]["asset_columns"])
+
+
+def load_price_panel(cfg: dict[str, Any]) -> pd.DataFrame:
+    """Closing prices for every diffusion asset, with stale leading rows dropped."""
+    raw_path = config_path(cfg, "raw_csv")
+    if not raw_path.exists():
+        raise FileNotFoundError(f"Raw price file not found: {raw_path}")
+    frame = pd.read_csv(raw_path)
+    frame = frame.set_index(cfg["data"]["date_column"])
+    frame.index = pd.to_datetime(frame.index)
+    columns = asset_columns(cfg)
+    missing = [col for col in columns if col not in frame.columns]
+    if missing:
+        raise ValueError(f"Missing price columns in {raw_path}: {missing}")
+    return frame[columns].iloc[cfg["data"]["skip_rows"] :]
+
+
+def build_multivariate_log_returns(cfg: dict[str, Any]) -> pd.DataFrame:
+    """Raw log returns for the diffusion asset panel.
+
+    Rows require every asset to have a valid price on both ``t`` and ``t-1``. Several assets start
+    later than A001, so this panel is shorter than the univariate HMM series. Diffusion training uses
+    the train-split dates that fall inside this overlap; regime labels are mapped by date rather than
+    recomputed.
+    """
+    prices = load_price_panel(cfg)
+    log_return = np.log(prices).diff().dropna(how="any")
+    return log_return
+
+
+def align_train_diffusion_panel(
+    returns: pd.DataFrame, regime_labels: np.ndarray, cfg: dict[str, Any]
+) -> tuple[np.ndarray, np.ndarray, pd.DatetimeIndex]:
+    """Train-split multivariate log returns aligned to cached A001 regime labels by date.
+
+    Returns ``panel`` of shape ``(n_days, n_assets)``, ``labels`` of shape ``(n_days,)``, and the
+    shared date index.
+    """
+    panel = build_multivariate_log_returns(cfg)
+    train = returns.loc[returns["split"] == "train"].copy()
+    train["date"] = pd.to_datetime(train["date"])
+    if len(regime_labels) != len(train):
+        raise ValueError(
+            f"Regime labels cover {len(regime_labels)} days but the training series has {len(train)}."
+        )
+
+    label_frame = pd.DataFrame(
+        {"date": train["date"].to_numpy(), "regime": regime_labels.astype(int)}
+    ).set_index("date")
+    common = panel.index.intersection(label_frame.index)
+    if common.empty:
+        raise ValueError("No overlapping dates between the multivariate panel and training labels.")
+
+    aligned_panel = panel.loc[common, asset_columns(cfg)].to_numpy(dtype=float)
+    aligned_labels = label_frame.loc[common, "regime"].to_numpy(dtype=int)
+    return aligned_panel, aligned_labels, common
+
+
 def train_returns(returns: pd.DataFrame) -> np.ndarray:
     """The z-scored training series that ``Vol_Regime`` and the specialists are fit on."""
     return returns.loc[returns["split"] == "train", "z_return"].to_numpy(dtype=float)

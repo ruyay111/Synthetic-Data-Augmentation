@@ -220,6 +220,10 @@ Stated in the notebook rather than hidden. The four entries below marked "resolv
 implementation" were not anticipated when this plan was written; `README.md` carries the full
 reasoning for each.
 
+**Diffusion uses ten assets with A001 regime labels (resolved during implementation).** Stage 1 labels
+regimes from z-scored A001 alone. Stage 2 attaches the ruya ten-asset panel by date for multi-asset
+specialist training and correlation plots. The HMM and reference-style stitching still use A001 only.
+
 **Changepoint penalty 10 to 22 (resolved during implementation).** The reference default no longer
 yields five regimes on current libraries, because the cluster-count search minimizes an
 un-normalized alignment cost and therefore under-selects. Several penalties give five regimes, but
@@ -227,10 +231,8 @@ only `pen=22` also places all five in the inner training slice, which the HMM re
 estimate every emission rather than fall back on the prior. It reproduces the reference accuracies
 closely.
 
-**`Corr` loss term dropped (resolved during implementation).** Anticipated below as a risk and
-confirmed: at `enc_in=1` it reduces an empty upper triangle, and the mean over an empty tensor is NaN
-on CPU and CUDA. The loss is now `1.0-KL2_N+1.0-FFT`. MPS returns 0.0 instead of NaN, so the bug is
-invisible on Apple Silicon.
+**`Corr` loss term dropped (resolved during implementation, then restored).** Was removed at
+`enc_in=1` because the term is undefined on a single channel. Restored with the move to `enc_in=10`.
 
 **Initial distribution reindexed (resolved during implementation).** The reference builds it from
 `value_counts`, which yields a short vector when a regime is absent from a slice and then fails in

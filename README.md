@@ -47,9 +47,9 @@ back to it if resolution misbehaves.
 ## Running
 
 ```
-python scripts/01_label_regimes.py            # preprocess, detect regimes, cache labels
-python scripts/02_build_diffusion_dataset.py  # cut per-regime 128-day training windows
-./scripts/03_train_specialists.sh             # train 5 specialists; needs a GPU
+python scripts/01_label_regimes.py            # A001 preprocess + regime labels (HMM input)
+python scripts/02_build_diffusion_dataset.py  # attach 9 other assets; cut (N,128,10) windows
+./scripts/03_train_specialists.sh             # train 5 ten-channel specialists; needs a GPU
 python scripts/04_generate_pools.py           # sample a pool from each specialist
 jupyter lab HMM-Diffusion.ipynb
 ```
@@ -71,25 +71,35 @@ REGIMES=0 EPOCHS=2 ./scripts/03_train_specialists.sh   # smoke test one regime
 
 ## Method
 
-Prices are S&P 500 total return closes (`A001`) from 1988-01-19, converted to log returns and z-scored
-using the mean and standard deviation of the whole series. The 9031 returns are split 75/25 into 6773
-train and 2258 test; the train portion is split 75/25 again into 5079 inner-training and 1694
-validation days. The test portion is never used.
+Two tracks share regime labels but differ in assets and scaling.
 
-Regimes come from `Vol_Regime`: GARCH(1,1) conditional volatility, PELT changepoint detection, a
-Wasserstein affinity between segments, then self-tuning spectral clustering. Labels are reordered so
-regime index increases with variance.
+**HMM track (A001 only).** S&P 500 total return closes (`A001`) from 1988-01-19, log returns z-scored
+using the mean and standard deviation of the whole series. The 9031 returns split 75/25 into 6773
+train and 2258 test; the train portion splits 75/25 again into 5079 inner-training and 1694 validation
+days. Regimes come from `Vol_Regime` on this z-scored A001 series. All four HMM variants and the
+reference-style plots use A001 emissions only.
 
-Specialists are unconditional DDPMs trained on 128-day windows cut from contiguous same-regime runs of
-the full 6773-day training series. Windows are z-scored log returns with `enc_in=1`. Segments shorter
-than 128 days are cyclically tiled rather than dropped.
+**Diffusion track (ten assets).** Stage 2 attaches the ruya ten-asset panel
+(`A001, A004, A006, A008, A009, A011, A012, A013, A014, A015`) to the cached A001 regime labels by
+date. Values are raw log returns; `Dataset_RegimeWindows` applies quantile scaling during training.
+Specialists are unconditional DDPMs with `enc_in=10` and the full ruya loss
+(`1.0-KL2_N+1.0-Corr+1.0-FFT`), which lets the model learn cross-asset correlations.
 
-Sampling produces `n_pool` windows per regime, inverse-transformed back to z-scored log-return units.
-Stitching walks a regime path and takes the next unused value from that regime's pool.
+Because several assets start later than A001, the usable train overlap is 3395 days from 2001-01-01 to
+2014-01-03 (the end of the outer train split), not the full 6773-day HMM training span. Regime labels
+on that overlap are the stage-1 A001 labels mapped by date, not recomputed.
+
+Sampling produces `n_pool` windows per regime, shape `(n_pool, 128, 10)`. The notebook stitches using
+the A001 channel only (`channel=0`) so the HMM comparison stays in the same units as the reference.
+Correlation evaluation uses all ten channels from the generated pools.
 
 ## Deviations from the reference
 
 Four changes were forced by library versions or by outright bugs. None were discretionary.
+
+**Diffusion uses ten assets with A001 regime labels.** Stage 1 labels regimes from z-scored A001 alone,
+matching the reference HMM. Stage 2 attaches nine other ruya assets by date for multi-asset specialist
+training and correlation evaluation. The HMM and reference-style plots still consume A001 only.
 
 **Changepoint penalty raised from 10 to 22.** The reference leaves `Vol_Regime.get_changepoints` at its
 default penalty of 10, which produced five regimes on its 2022 libraries but produces three on current
@@ -106,18 +116,6 @@ slice, so the HMM never observes it and its emission parameters are drawn from t
 estimated. `pen=22` is the only candidate giving five variance-ordered regimes with all five present in
 the training slice, and it reproduces the reference accuracies closely.
 
-**`Corr` loss term dropped.** The reference diffusion configuration uses
-`1.0-KL2_N+1.0-Corr+1.0-FFT`. `Corr_Loss` matches the cross-channel correlation matrix by reducing its
-strictly-upper triangle, which for univariate data is a 1×1 matrix with an empty upper triangle. The
-mean over an empty tensor is NaN on CPU and CUDA. `Loss_Wrapper` sums terms without sanitizing, so the
-reported loss is NaN every epoch and the loss curve is meaningless. Gradients happen to survive,
-because backward through an empty tensor contributes nothing, so the model still trains on the
-remaining terms while reporting nothing usable. The term is structurally vacuous at `enc_in=1`, not
-merely unhelpful, so it is removed. The configuration is `1.0-KL2_N+1.0-FFT`.
-
-Worth noting for anyone smoke-testing on a Mac: MPS returns 0.0 rather than NaN for a mean over an
-empty tensor, so this bug is invisible on Apple Silicon and only appears on CUDA.
-
 **Initial distribution reindexed over all regimes.** The reference builds it with
 `value_counts(normalize=True).sort_index()`, which yields a vector as long as the number of regimes
 actually present. Because volatility regimes cluster in time, a temporal split can strand one, and the
@@ -133,6 +131,11 @@ so the neural HMM is not reproducible. It is now seeded from `hmm.neural.seed`. 
 repeatable but does not make the estimator stable; see limitations.
 
 ## Limitations
+
+**Diffusion train span is shorter than the HMM train span.** Several assets lack prices before 2001, so
+ten-asset windows cover 3395 training days (2001–2014) rather than 6773 (1988–2014). Regime 0 is
+especially thin in this overlap: only 130 days and three windows, so stage 3 skips its specialist
+unless you retune labeling or accept a four-specialist pool.
 
 **Regime 4 is thin.** The highest-volatility regime covers 255 of 6773 training days across two
 segments, roughly one independent 128-day window. Its specialist has very little to learn from and will
