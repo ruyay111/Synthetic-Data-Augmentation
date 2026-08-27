@@ -1,0 +1,99 @@
+# Single source of truth for every constant in the pipeline. Scripts 01-04 and the notebook all read
+# this file, so changing a value here propagates rather than requiring edits in several places.
+# Values under `reference` are the notebook figures the pipeline is validated against; they are
+# assertions, not tunables.
+
+paths:
+  raw_csv: data/raw/benchmark_data.csv
+  returns: data/processed/sp500tr_returns.parquet
+  regime_labels: data/processed/regime_labels.npz
+  regime_windows: data/processed/regime_windows
+  pools: data/pools
+  checkpoints: checkpoints
+  test_results: test_results
+
+data:
+  # Notebook cell 4-5. `skip_rows` drops pre-1988-01-19 rows, which are stale in the source file.
+  date_column: as_of
+  price_column: A001
+  skip_rows: 2100
+  # Fractions applied in sequence: outer split on the full return series, then inner split on train.
+  train_fraction: 0.75
+  train_val_fraction: 0.75
+
+regimes:
+  n_regimes: 5
+  # Vol_Regime.get_changepoints PELT penalty. The reference notebook leaves this at the default of
+  # 10, which yielded 5 regimes on its 2022 library versions but yields 3 on current ones.
+  # 22 is the only value that gives 5 variance-ordered regimes AND places all 5 in the inner
+  # training slice, which the HMM needs in order to estimate every emission. It also reproduces the
+  # reference accuracies closely. See the regime labeling section of README.md.
+  changepoint_penalty: 22
+  ewm_com: 0.5
+
+diffusion:
+  seq_len: 128
+  enc_in: 1
+  stride: 1
+  # Cyclically repeat same-regime segments shorter than seq_len rather than dropping them.
+  short_policy: tile
+  batch_size: 32
+  sample_multiplier: 8
+  train_epochs: 50
+  learning_rate: 0.0027983303288563873
+  lr_decay_rounds: 10
+  # Upstream uses 1.0-KL2_N+1.0-Corr+1.0-FFT. Corr matches the cross-channel correlation matrix, so
+  # with enc_in=1 it reduces the strictly-upper triangle of a 1x1 matrix, which is empty. The mean
+  # over an empty tensor is NaN on CPU and CUDA (MPS quietly returns 0.0), so the term is dropped:
+  # it is structurally vacuous here, not merely unhelpful. See README.md.
+  loss: 1.0-KL2_N+1.0-FFT
+  scale: quantile
+
+sampling:
+  n_pool: 128
+  sample_step: 450
+  temperature: 0.7473231454237225
+  sampler: DDPM
+  method: discrete
+
+hmm:
+  num_warmup: 200
+  num_samples: 100
+  num_chains: 1
+  rng_seed: 1
+  top_k: 2
+  # Neural HMM (Pyro SVI). Unlike the NumPyro variants, which take an explicit PRNGKey, the reference
+  # never seeds Pyro. The fit is genuinely unstable across initializations: repeated runs of this
+  # exact configuration have landed anywhere between 37% and 71% train accuracy, because the emitter
+  # sometimes collapses the three highest-volatility regimes onto one sigma. Seeding makes a run
+  # reproducible; it does not make the estimator stable. See README.md.
+  neural:
+    z_dim: 1
+    hidden_dim: 10
+    emission_dim: 1
+    learning_rate: 0.1
+    n_steps: 100
+    seed: 0
+  # Semi-supervised HMM: fraction of the train slice that keeps its labels.
+  semi_supervised_fraction: 0.5
+
+# Expected values from the reference notebook. Script 01 asserts these.
+# Dates are of the *return* series: prices start 1988-01-19, and the leading row is consumed by
+# .diff().dropna(), so the first return is dated 1988-01-20.
+reference:
+  n_returns: 9031
+  n_train: 6773
+  n_test: 2258
+  n_train_inner: 5079
+  n_val: 1694
+  price_start_date: '1988-01-19'
+  start_date: '1988-01-20'
+  end_date: '2022-08-31'
+  # State-estimation accuracies reported by the reference notebook, as fractions. These depend on the
+  # regime labels, which we cannot reproduce bit-for-bit (see README.md), so treat them as the
+  # benchmark the pipeline should land near rather than as assertions.
+  accuracy:
+    supervised: {train: 0.8228, train_top2: 0.9890, val: 0.6848, val_top2: 0.9587}
+    markov_switching: {train: 0.8200, train_top2: 0.9892, val: 0.6860, val_top2: 0.9522}
+    semi_supervised: {train: 0.7765, train_top2: 0.9807, val: 0.6848, val_top2: 0.9575}
+    neural: {train: 0.7714, train_top2: 0.9583, val: 0.6240, val_top2: 0.9498}

@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# Generated artifacts. Scripts 01-04 rebuild all of these; the raw CSV is committed, nothing else is.
+data/processed/
+data/pools/
+checkpoints/
+test_results/
