@@ -121,6 +121,17 @@ def _assign_kmeans(vc: Any, train_series: np.ndarray, n_regimes: int, seed: int)
     return _finalize_cluster_assignment(vc, train_series, clusters_assign)
 
 
+def _clustering_methods(cfg: dict[str, Any]) -> tuple[str, ...]:
+    requested = str(cfg["regimes"].get("clustering_method", "auto"))
+    if requested == "auto":
+        return ("spectral", "kmeans")
+    if requested in {"spectral", "kmeans"}:
+        return (requested,)
+    raise ValueError(
+        f"Unknown regimes.clustering_method {requested!r}; use auto, spectral, or kmeans."
+    )
+
+
 def _run_vol_regime(
     train_series: np.ndarray,
     penalty: int,
@@ -164,11 +175,13 @@ def _labels_ok(
 def fit_regimes(train_series: np.ndarray, cfg: dict[str, Any]) -> RegimeLabels:
     """Run the full ``Vol_Regime`` pipeline on the training series.
 
-    Tries changepoint penalties and, when needed, k-means on the rotated spectral embedding.
-    Spectral clustering matches the reference notebook; k-means is a fallback for platforms where
-    the self-tuning search under-selects or leaves a regime out of the inner training slice.
+    Tries changepoint penalties and the configured clustering method. ``spectral`` matches the
+    reference notebook; ``kmeans`` forces five clusters on the rotated spectral embedding, which is
+    also the setting that can put enough post-2001 low-volatility days into regime 0 for real
+    128-day diffusion windows.
     """
     n_regimes = int(cfg["regimes"]["n_regimes"])
+    methods = _clustering_methods(cfg)
     attempts: list[dict[str, Any]] = []
     chosen_penalty: int | None = None
     chosen_method: str | None = None
@@ -176,7 +189,7 @@ def fit_regimes(train_series: np.ndarray, cfg: dict[str, Any]) -> RegimeLabels:
     labels: np.ndarray | None = None
 
     for penalty in _penalty_candidates(cfg):
-        for method in ("spectral", "kmeans"):
+        for method in methods:
             vc, labels = _run_vol_regime(train_series, penalty, n_regimes, cfg, method=method)
             ok, info = _labels_ok(train_series, labels, n_regimes, cfg)
             attempts.append({"penalty": penalty, "method": method, "ok": ok, **info})
@@ -205,11 +218,15 @@ def fit_regimes(train_series: np.ndarray, cfg: dict[str, Any]) -> RegimeLabels:
         raise SystemExit("\n".join(lines))
 
     configured_pen = int(cfg["regimes"]["changepoint_penalty"])
-    if chosen_penalty != configured_pen or chosen_method != "spectral":
+    requested_method = str(cfg["regimes"].get("clustering_method", "auto"))
+    used_fallback = chosen_penalty != configured_pen or (
+        requested_method == "auto" and chosen_method != "spectral"
+    )
+    if used_fallback:
         print(
-            f"[WARN] configured spectral penalty {configured_pen} did not yield {n_regimes} usable "
-            f"regimes on this platform; using penalty {chosen_penalty} with {chosen_method} "
-            "clustering instead."
+            f"[WARN] configured penalty {configured_pen} / clustering {requested_method} "
+            f"did not yield {n_regimes} usable regimes; using penalty {chosen_penalty} with "
+            f"{chosen_method} clustering instead."
         )
 
     metadata = _build_metadata(

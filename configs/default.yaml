@@ -36,19 +36,23 @@ data:
 
 regimes:
   n_regimes: 5
-  # Vol_Regime.get_changepoints PELT penalty. The reference notebook leaves this at the default of
-  # 10, which yielded 5 regimes on its 2022 library versions but yields 3 on current ones.
-  # 22 is the only value that gives 5 variance-ordered regimes AND places all 5 in the inner
-  # training slice, which the HMM needs in order to estimate every emission. It also reproduces the
-  # reference accuracies closely. See the regime labeling section of README.md.
-  changepoint_penalty: 22
+  # Vol_Regime.get_changepoints PELT penalty. Lower values cut more segments, which lets k-means
+  # assign some post-2001 low-vol stretches to regime 0 (needed for 128-day diffusion windows).
+  # 18 + kmeans keeps five variance-ordered regimes in the inner training slice and raises the
+  # thinnest ten-asset-overlap window count from 3 (pen=22) to 136. Spectral clustering still
+  # under-selects on current libraries; see README.md.
+  changepoint_penalty: 18
+  # auto = spectral then kmeans; kmeans forces five clusters on the rotated spectral embedding.
+  clustering_method: kmeans
   # If the configured penalty yields fewer than n_regimes on a given platform (common on Windows
   # even with the same requirements.txt), stage 1 tries these in order until five variance-ordered
   # regimes are found with all five present in the inner training slice.
   changepoint_penalty_fallback:
+    - 18
+    - 10
+    - 12
     - 22
     - 20
-    - 18
     - 24
     - 26
     - 28
@@ -58,8 +62,6 @@ regimes:
     - 40
     - 45
     - 15
-    - 12
-  # Used only when self-tuning spectral clustering cannot yield five usable regimes.
   clustering_seed: 0
   ewm_com: 0.5
 

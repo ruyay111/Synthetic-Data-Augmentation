@@ -18,6 +18,21 @@ import json
 warnings.filterwarnings('ignore')
 
 
+def resolve_sample_step_list(sample_step, total_steps):
+    """Map ``test(sample_step=...)`` to integer reverse-diffusion lengths.
+
+    Values in ``(0, 1]`` are fractions of ``total_steps`` (rounded). Values greater than 1 are
+    absolute step counts, so ``450`` is step 450 rather than ``total_steps * 450``.
+    """
+    if sample_step is None:
+        sample_step = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    resolved = []
+    for step in sample_step:
+        value = float(step)
+        resolved.append(int(value) if value > 1 else int(round(total_steps * value)))
+    return resolved
+
+
 class Exp_Basic_Diffusion(Exp_Basic):
     def __init__(self, args):
         super(Exp_Basic_Diffusion, self).__init__(args)
@@ -259,12 +274,7 @@ class Exp_Basic_Diffusion(Exp_Basic):
                         torch.load(os.path.join(self.checkpoints_path, f'checkpoint_model_{i}.pth')))
 
         folder_path = self._output_dir()
-
-        if sample_step is None:
-            step_list = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-            sample_step_list = [int(self.args.total_steps * step) for step in step_list]
-        else:
-            sample_step_list = [int(self.args.total_steps * step) for step in sample_step]
+        sample_step_list = resolve_sample_step_list(sample_step, self.args.total_steps)
 
         benchmark = train_data.raw_data
         if save_data:
@@ -373,12 +383,7 @@ class Exp_Basic_Diffusion(Exp_Basic):
             else:
                 self.model.load_state_dict(torch.load(os.path.join(self.checkpoints_path, 'checkpoint.pth')))
         folder_path = self._output_dir()
-
-        if sample_step is None:
-            step_list = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-            sample_step_list = [int(self.args.total_steps * step) for step in step_list]
-        else:
-            sample_step_list = [int(self.args.total_steps * step) for step in sample_step]
+        sample_step_list = resolve_sample_step_list(sample_step, self.args.total_steps)
 
         benchmark = train_data.raw_data
         if save_data:

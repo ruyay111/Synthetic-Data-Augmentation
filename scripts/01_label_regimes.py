@@ -78,6 +78,7 @@ def check_labels(regimes, cfg) -> None:
             f"lowest-volatility state: {meta['regime_variances']}"
         )
     print(f"[OK] {meta['n_regimes_found']} regimes, variance increasing in label index")
+    print(f"       clustering: {meta.get('clustering_method', '?')}  penalty: {meta.get('changepoint_penalty')}")
     print(f"       changepoints: {meta['n_changepoints']}")
     for k, (count, var) in enumerate(zip(meta["regime_counts"], meta["regime_variances"])):
         share = 100 * count / meta["n_days"]

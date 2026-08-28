@@ -3,8 +3,8 @@
 #
 # Derived from train_specialist_diffusions.sh in the ruya tree. Uses the ten-asset regime windows from
 # stage 2 (enc_in=10, full Corr loss). Absolute paths are required because run.py chdirs to its own
-# directory. --skip_test because pools are sampled separately by scripts/04_generate_pools.py.
-#
+# directory. After training, plots at sampling.sample_step (450) only.
+
 # Environment overrides:
 #   PYTHON        interpreter to use                (default: python)
 #   DEVICE        cuda | mps | cpu                  (default: cuda)
@@ -12,6 +12,7 @@
 #   REGIMES       space-separated regimes to train  (default: all)
 #   LOSS          loss spec                         (default: from configs/default.yaml)
 #   FORCE         1 to retrain regimes that already have a checkpoint
+#   SKIP_EVAL     1 to train without dist/autocorr plots
 #
 # Smoke test one regime before committing to the full run:
 #   REGIMES=0 EPOCHS=2 DEVICE=cuda ./scripts/03_train_specialists.sh
@@ -22,6 +23,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON="${PYTHON:-python}"
 DEVICE="${DEVICE:-cuda}"
 FORCE="${FORCE:-0}"
+SKIP_EVAL="${SKIP_EVAL:-0}"
 
 if ! command -v "${PYTHON}" >/dev/null 2>&1; then
   echo "[ERROR] python interpreter '${PYTHON}' not found. Set PYTHON=/path/to/python." >&2
@@ -33,7 +35,7 @@ eval "$(
   "${PYTHON}" - "${REPO_ROOT}" <<'PY'
 import pathlib, sys, yaml
 cfg = yaml.safe_load((pathlib.Path(sys.argv[1]) / "configs" / "default.yaml").read_text())
-d, r = cfg["diffusion"], cfg["regimes"]
+d, r, s = cfg["diffusion"], cfg["regimes"], cfg["sampling"]
 print(f'CFG_N_REGIMES={r["n_regimes"]}')
 print(f'CFG_SEQ_LEN={d["seq_len"]}')
 print(f'CFG_ENC_IN={d["enc_in"]}')
@@ -47,6 +49,8 @@ print(f'CFG_SCALE={d["scale"]}')
 print(f'CFG_WINDOWS={cfg["paths"]["regime_windows"]}')
 print(f'CFG_CHECKPOINTS={cfg["paths"]["checkpoints"]}')
 print(f'CFG_TEST_RESULTS={cfg["paths"]["test_results"]}')
+print(f'CFG_SAMPLE_STEP={s["sample_step"]}')
+print(f'CFG_TEMPERATURE={s["temperature"]}')
 PY
 )"
 
@@ -68,26 +72,21 @@ mkdir -p "${CHECKPOINTS_DIR}" "${TEST_RESULTS_DIR}"
 echo "[INFO] python=${PYTHON} device=${DEVICE} epochs=${EPOCHS}"
 echo "[INFO] regimes=${REGIME_LIST[*]} loss=${LOSS}"
 echo "[INFO] windows=${WINDOWS_DIR}"
+echo "[INFO] eval sample_step=${CFG_SAMPLE_STEP} -> ${TEST_RESULTS_DIR}"
 
-for k in "${REGIME_LIST[@]}"; do
-  data_path="${WINDOWS_DIR}/regime_${k}.npy"
-  if [[ ! -f "${data_path}" ]]; then
-    echo "[SKIP] regime ${k}: ${data_path} missing; run scripts/02_build_diffusion_dataset.py"
-    continue
+run_specialist() {
+  local k="$1"
+  local data_path="$2"
+  local skip_train="$3"
+  local extra=()
+  if [[ "${skip_train}" == "1" ]]; then
+    extra+=(--skip_train)
   fi
-
-  n_windows="$("${PYTHON}" -c "import numpy as np; print(int(np.load(r'''${data_path}''').shape[0]))")"
-  if [[ "${n_windows}" -lt 8 ]]; then
-    echo "[SKIP] regime ${k}: only ${n_windows} windows"
-    continue
+  if [[ "${SKIP_EVAL}" == "1" ]]; then
+    extra+=(--skip_test)
+  else
+    extra+=(--eval_sample_step "${CFG_SAMPLE_STEP}" --eval_temperature "${CFG_TEMPERATURE}")
   fi
-
-  if [[ "${FORCE}" != "1" ]] && compgen -G "${CHECKPOINTS_DIR}/*_specialist_regime_${k}/checkpoint.pth" >/dev/null; then
-    echo "[SKIP] regime ${k}: checkpoint exists (FORCE=1 to retrain)"
-    continue
-  fi
-
-  echo "[TRAIN] regime ${k}: ${n_windows} windows"
   "${PYTHON}" "${RUN_PY}" \
     --task_name diffusion_denoised_x \
     --model UniTST_MP \
@@ -110,8 +109,35 @@ for k in "${REGIME_LIST[@]}"; do
     --loss "${LOSS}" \
     --device "${DEVICE}" \
     --gpu 0 \
-    --skip_test \
-    --description "specialist_regime_${k}"
+    --description "specialist_regime_${k}" \
+    "${extra[@]}"
+}
+
+for k in "${REGIME_LIST[@]}"; do
+  data_path="${WINDOWS_DIR}/regime_${k}.npy"
+  if [[ ! -f "${data_path}" ]]; then
+    echo "[SKIP] regime ${k}: ${data_path} missing; run scripts/02_build_diffusion_dataset.py"
+    continue
+  fi
+
+  n_windows="$("${PYTHON}" -c "import numpy as np; print(int(np.load(r'''${data_path}''').shape[0]))")"
+  if [[ "${n_windows}" -lt 8 ]]; then
+    echo "[SKIP] regime ${k}: only ${n_windows} windows"
+    continue
+  fi
+
+  if [[ "${FORCE}" != "1" ]] && compgen -G "${CHECKPOINTS_DIR}/*_specialist_regime_${k}/checkpoint.pth" >/dev/null; then
+    if [[ "${SKIP_EVAL}" == "1" ]]; then
+      echo "[SKIP] regime ${k}: checkpoint exists (FORCE=1 to retrain)"
+      continue
+    fi
+    echo "[EVAL] regime ${k}: checkpoint exists, plotting sample_step=${CFG_SAMPLE_STEP}"
+    run_specialist "${k}" "${data_path}" 1
+    continue
+  fi
+
+  echo "[TRAIN] regime ${k}: ${n_windows} windows"
+  run_specialist "${k}" "${data_path}" 0
 done
 
 echo "[OK] done. Next: scripts/04_generate_pools.py"

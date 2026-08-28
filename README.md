@@ -49,7 +49,7 @@ back to it if resolution misbehaves.
 ```
 python scripts/01_label_regimes.py            # A001 preprocess + regime labels (HMM input)
 python scripts/02_build_diffusion_dataset.py  # attach 9 other assets; cut (N,128,10) windows
-./scripts/03_train_specialists.sh             # train 5 ten-channel specialists; needs a GPU
+python scripts/03_train_specialists.py             # train 5 ten-channel specialists; needs a GPU
 python scripts/04_generate_pools.py           # sample a pool from each specialist
 jupyter lab HMM-Diffusion.ipynb
 ```
@@ -68,6 +68,8 @@ Environment overrides for stage 3:
 PYTHON=/path/to/python DEVICE=cuda EPOCHS=50 ./scripts/03_train_specialists.sh
 REGIMES=0 EPOCHS=2 ./scripts/03_train_specialists.sh   # smoke test one regime
 ```
+
+
 
 ## Method
 
@@ -175,9 +177,12 @@ Accuracies reported by the source notebook, which the pipeline is checked agains
 regime labels, which cannot be reproduced exactly, so they are a benchmark to land near rather than an
 assertion.
 
-| variant | train | train top-2 | validation | validation top-2 |
-|---|---|---|---|---|
-| supervised | 82.28% | 98.90% | 68.48% | 95.87% |
-| markov switching | 82.00% | 98.92% | 68.60% | 95.22% |
-| semi-supervised | 77.65% | 98.07% | 68.48% | 95.75% |
-| neural | 77.14% | 95.83% | 62.40% | 94.98% |
+
+| variant          | train  | train top-2 | validation | validation top-2 |
+| ---------------- | ------ | ----------- | ---------- | ---------------- |
+| supervised       | 82.28% | 98.90%      | 68.48%     | 95.87%           |
+| markov switching | 82.00% | 98.92%      | 68.60%     | 95.22%           |
+| semi-supervised  | 77.65% | 98.07%      | 68.48%     | 95.75%           |
+| neural           | 77.14% | 95.83%      | 62.40%     | 94.98%           |
+
+

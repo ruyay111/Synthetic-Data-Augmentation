@@ -19,12 +19,15 @@ directory. Our scripts always pass absolute paths.
 
 ### Local patches
 
-One patch, in `run.py`: a `--skip_test` flag.
+Two patches, both in `run.py` plus a small helper in `src/exp/exp_basic_diffusion.py`.
 
-Upstream unconditionally runs `exp.test(size=500, sample_step=[0.1 ... 1.0], ...)` after training,
-which generates 500 windows at each of twelve sample-step fractions. We sample pools separately in
-`scripts/04_generate_pools.py` at a single sample step, so for five specialists that sweep is pure
-overhead. The flag defaults to `False`, so behaviour without it is identical to upstream.
+`--skip_test` skips the post-train evaluation sweep. Upstream unconditionally runs
+`exp.test(size=500, sample_step=[0.1 ... 1.0], ...)`, which generates 500 windows at each of twelve
+sample-step fractions. `--eval_sample_step` replaces that sweep; values greater than 1 are absolute
+step counts so `450` is reverse-diffusion length 450, not `total_steps * 450`. Stage 3 passes
+`sampling.sample_step` from `configs/default.yaml` (450) and writes dist/autocorr/moments/cov/corr
+plots under `test_results/<run>/450_discrete_DDPM_<temp>/`. The flag defaults keep upstream behaviour
+when neither `--skip_test` nor `--eval_sample_step` is set.
 
 ## `hmmgan/`
 

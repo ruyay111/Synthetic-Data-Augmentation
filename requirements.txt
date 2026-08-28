@@ -17,6 +17,10 @@ PyYAML>=6.0
 #   pip install torch --index-url https://download.pytorch.org/whl/cu124
 torch>=2.4
 einops>=0.7
+# Imported at trainer startup (losses.py / plotting.py), even when those terms are unused.
+geomloss>=0.2.6
+seaborn>=0.13
+tslearn>=0.6
 
 # Regime labeling (Vol_Regime): ARCH conditional volatility and PELT changepoints.
 arch>=6.2

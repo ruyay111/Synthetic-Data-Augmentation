@@ -162,6 +162,11 @@ if __name__ == '__main__':
     # scripts/04_generate_pools.py. See third_party/VENDORED.md.
     parser.add_argument('--skip_test', default=False, action='store_true',
                         help='train only; skip the built-in multi-sample_step test sweep')
+    parser.add_argument('--eval_sample_step', type=float, nargs='+', default=None,
+                        help='Post-train test steps. Values in (0, 1] are fractions of total_steps; '
+                             'values > 1 are absolute (e.g. 450). Default: 12-step sweep.')
+    parser.add_argument('--eval_temperature', type=float, default=0.7473231454237225,
+                        help='Sampling temperature used by the post-train test plots')
 
     args = parser.parse_args()
     if args.device == 'cpu':
@@ -194,8 +199,11 @@ if __name__ == '__main__':
     if not args.skip_train:
         exp.train()
     if not args.skip_test:
-        exp.test(size=500, method='discrete', temperature=0.7473231454237225, save_data=True,
-                 sample_step=[0.1, 0.2, 0.3, 0.4, 0.45, 0.5, 0.55, 0.6, 0.7, 0.8, 0.9, 1.0], joint_kl=False, lags=128)
+        eval_steps = args.eval_sample_step if args.eval_sample_step is not None else [
+            0.1, 0.2, 0.3, 0.4, 0.45, 0.5, 0.55, 0.6, 0.7, 0.8, 0.9, 1.0
+        ]
+        exp.test(size=500, method='discrete', temperature=args.eval_temperature, save_data=True,
+                 sample_step=eval_steps, joint_kl=False, lags=128)
     """exp.test(size=1024, method='discrete', temperature=1, save_data=True,
              sample_step=[0.1, 0.2, 0.3, 0.4, 0.45, 0.5, 0.55, 0.6, 0.7, 0.8, 0.9, 1.0], joint_kl=False, lags=128)"""
     # exp.test_2(findiff_test_path='./test_results/findiff_FinDiff_MLP_ALL_Benchmark_FinDiff_MSE_N_sl128_10_mfs', save_data=True, lags=128)
