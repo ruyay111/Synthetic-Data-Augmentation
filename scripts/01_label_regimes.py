@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from hmmdiff.config import bootstrap_imports, config_path, load_config  # noqa: E402
 from hmmdiff.data import build_returns, compute_splits, save_returns, train_returns  # noqa: E402
-from hmmdiff.regimes import fit_regimes, save_labels  # noqa: E402
+from hmmdiff.regimes import fit_regimes, load_labels, save_labels  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,8 +68,9 @@ def check_labels(regimes, cfg) -> None:
     if meta["n_regimes_found"] != n_expected:
         raise SystemExit(
             f"Vol_Regime found {meta['n_regimes_found']} regimes, expected {n_expected}. "
-            "max_clusters is an upper bound and the self-tuning search settled lower; rerun with "
-            "--force, or reconsider the changepoint penalty."
+            "The tqdm bar (e.g. 4/4) counts cluster-count candidates tried, not regimes found. "
+            "Stage 1 should auto-fallback across penalties; if this still fails, extend "
+            "regimes.changepoint_penalty_fallback in configs/default.yaml."
         )
     if not meta["variance_monotone"]:
         raise SystemExit(
@@ -103,6 +104,13 @@ def main() -> int:
         print(
             "       Relabeling invalidates data/processed/regime_windows and every trained "
             "specialist."
+        )
+        cached = load_labels(labels_path)
+        meta = cached.metadata
+        print(
+            f"       cached: {meta['n_regimes_found']} regimes, "
+            f"penalty={meta.get('changepoint_penalty', '?')}, "
+            f"changepoints={meta.get('n_changepoints', '?')}"
         )
         return 0
 

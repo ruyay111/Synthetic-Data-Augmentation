@@ -42,6 +42,23 @@ regimes:
   # training slice, which the HMM needs in order to estimate every emission. It also reproduces the
   # reference accuracies closely. See the regime labeling section of README.md.
   changepoint_penalty: 22
+  # If the configured penalty yields fewer than n_regimes on a given platform (common on Windows
+  # even with the same requirements.txt), stage 1 tries these in order until five variance-ordered
+  # regimes are found with all five present in the inner training slice.
+  changepoint_penalty_fallback:
+    - 22
+    - 20
+    - 18
+    - 24
+    - 26
+    - 28
+    - 30
+    - 32
+    - 35
+    - 40
+    - 45
+    - 15
+    - 12
   ewm_com: 0.5
 
 diffusion:

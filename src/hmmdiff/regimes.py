@@ -12,7 +12,10 @@ rather than recomputing it.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
+import os
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,24 +45,107 @@ class RegimeLabels:
         return [self.conversion_dict[self.clusters[i]] for i in range(len(self.changepoints) - 1)]
 
 
+def _penalty_candidates(cfg: dict[str, Any]) -> list[int]:
+    primary = int(cfg["regimes"]["changepoint_penalty"])
+    fallbacks = [int(p) for p in cfg["regimes"].get("changepoint_penalty_fallback", [])]
+    seen = set()
+    ordered: list[int] = []
+    for pen in [primary, *fallbacks]:
+        if pen not in seen:
+            ordered.append(pen)
+            seen.add(pen)
+    return ordered
+
+
+def _inner_train_cut(train_len: int, cfg: dict[str, Any]) -> int:
+    return int(train_len * cfg["data"]["train_val_fraction"])
+
+
+def _run_vol_regime(train_series: np.ndarray, penalty: int, n_regimes: int) -> tuple[Any, np.ndarray]:
+    """Run Vol_Regime with tqdm suppressed so penalty sweeps stay readable."""
+    from hmmgan.evaluation import Vol_Regime
+
+    vc = Vol_Regime(train_series)
+    vc.get_vol()
+    vc.get_changepoints(pen=penalty)
+    vc.get_attr()
+    with contextlib.redirect_stdout(io.StringIO()):
+        os.environ["TQDM_DISABLE"] = "1"
+        try:
+            vc.assign_clusters(max_clusters=n_regimes)
+        finally:
+            os.environ.pop("TQDM_DISABLE", None)
+    return vc, np.asarray(vc.regime_labels, dtype=float)
+
+
+def _labels_ok(
+    train_series: np.ndarray, labels: np.ndarray, n_regimes: int, cfg: dict[str, Any]
+) -> tuple[bool, dict[str, Any]]:
+    found = int(labels.max()) + 1
+    variances = [float(np.var(train_series[labels == k])) for k in range(found)]
+    inner_cut = _inner_train_cut(len(train_series), cfg)
+    inner_counts = np.bincount(labels[:inner_cut].astype(int), minlength=n_regimes)
+    info = {
+        "n_regimes_found": found,
+        "regime_variances": variances,
+        "variance_monotone": bool(all(np.diff(variances) > 0)) if found > 1 else True,
+        "inner_train_counts": inner_counts.tolist(),
+        "all_regimes_in_inner_train": bool(found == n_regimes and (inner_counts > 0).all()),
+    }
+    ok = (
+        found == n_regimes
+        and info["variance_monotone"]
+        and info["all_regimes_in_inner_train"]
+    )
+    return ok, info
+
+
 def fit_regimes(train_series: np.ndarray, cfg: dict[str, Any]) -> RegimeLabels:
     """Run the full ``Vol_Regime`` pipeline on the training series.
 
-    Mirrors notebook cell 6: ``get_vol`` then ``get_changepoints`` then ``get_attr`` then
-    ``assign_clusters(max_clusters=n_regimes)``.
+    Mirrors notebook cell 6, but sweeps changepoint penalties when the configured value yields
+    fewer than ``n_regimes`` on the current platform. The reference algorithm is unchanged; only
+    the PELT penalty varies.
     """
-    from hmmgan.evaluation import Vol_Regime
+    n_regimes = int(cfg["regimes"]["n_regimes"])
+    attempts: list[dict[str, Any]] = []
+    chosen_penalty: int | None = None
+    vc = None
+    labels: np.ndarray | None = None
 
-    n_regimes = cfg["regimes"]["n_regimes"]
-    vc = Vol_Regime(train_series)
-    vc.get_vol()
-    vc.get_changepoints(pen=cfg["regimes"]["changepoint_penalty"])
-    vc.get_attr()
-    # max_clusters is an upper bound; the self-tuning search may settle on fewer.
-    vc.assign_clusters(max_clusters=n_regimes)
+    for penalty in _penalty_candidates(cfg):
+        vc, labels = _run_vol_regime(train_series, penalty, n_regimes)
+        ok, info = _labels_ok(train_series, labels, n_regimes, cfg)
+        attempts.append({"penalty": penalty, "ok": ok, **info})
+        if ok:
+            chosen_penalty = penalty
+            break
 
-    labels = np.asarray(vc.regime_labels, dtype=float)
-    metadata = _build_metadata(train_series, labels, vc, cfg)
+    if chosen_penalty is None or vc is None or labels is None:
+        lines = [
+            "Could not find a changepoint penalty that yields "
+            f"{n_regimes} variance-ordered regimes with all regimes in the inner training slice.",
+            "Tried:",
+        ]
+        for row in attempts:
+            lines.append(
+                f"  pen={row['penalty']:>2}: found={row['n_regimes_found']} "
+                f"monotone={row['variance_monotone']} "
+                f"inner_train={row['inner_train_counts']}"
+            )
+        lines.append(
+            "Add a candidate to regimes.changepoint_penalty_fallback in configs/default.yaml."
+        )
+        raise SystemExit("\n".join(lines))
+
+    if chosen_penalty != int(cfg["regimes"]["changepoint_penalty"]):
+        print(
+            f"[WARN] configured penalty {cfg['regimes']['changepoint_penalty']} did not yield "
+            f"{n_regimes} usable regimes on this platform; using penalty {chosen_penalty} instead."
+        )
+
+    metadata = _build_metadata(train_series, labels, vc, cfg, chosen_penalty=chosen_penalty)
+    metadata["penalty_attempts"] = attempts
     return RegimeLabels(
         labels=labels,
         changepoints=np.asarray(vc.changepoints, dtype=int),
@@ -71,7 +157,7 @@ def fit_regimes(train_series: np.ndarray, cfg: dict[str, Any]) -> RegimeLabels:
 
 
 def _build_metadata(
-    series: np.ndarray, labels: np.ndarray, vc: Any, cfg: dict[str, Any]
+    series: np.ndarray, labels: np.ndarray, vc: Any, cfg: dict[str, Any], chosen_penalty: int
 ) -> dict[str, Any]:
     found = int(labels.max()) + 1
     variances = [float(np.var(series[labels == k])) for k in range(found)]
@@ -81,7 +167,8 @@ def _build_metadata(
         "n_regimes_requested": int(cfg["regimes"]["n_regimes"]),
         "n_regimes_found": found,
         "n_changepoints": int(len(vc.changepoints)),
-        "changepoint_penalty": cfg["regimes"]["changepoint_penalty"],
+        "changepoint_penalty": chosen_penalty,
+        "changepoint_penalty_configured": int(cfg["regimes"]["changepoint_penalty"]),
         "regime_counts": counts,
         "regime_variances": variances,
         "variance_monotone": bool(all(np.diff(variances) > 0)),
