@@ -1,0 +1,15 @@
+{
+  "regime": 1,
+  "n_pool": 128,
+  "seq_len": 128,
+  "n_channels": 10,
+  "sample_step": 450,
+  "temperature": 0.7473231454237225,
+  "sampler": "DDPM",
+  "method": "discrete",
+  "checkpoint_dir": "C:\\Users\\Xu Lab\\Desktop\\Mohan\\HMM-Diffusion\\checkpoints\\diffusion_denoised_x_UniTST_MP_ALL_RegimeWindows_1.0-KL2_N+1.0-Corr+1.0-FFT_sl128_ds0_cmTrue_ceTrue_ipTrue_RoPE_specialist_regime_1",
+  "generated_at": "2026-08-28T13:25:20.664449+00:00",
+  "units": "z_scored_log_returns",
+  "mean": 0.0016915039992170088,
+  "var": 3.7464278915055933e-05
+}

@@ -1,0 +1,407 @@
+
+
+===== Log started on 2026-08-27 19:38:09 =====
+>>>>>>>start training : diffusion_denoised_x_UniTST_MP_ALL_RegimeWindows_1.0-KL2_N+1.0-Corr+1.0-FFT_sl128_ds0_cmTrue_ceTrue_ipTrue_RoPE_specialist_regime_2>>>>>>>>>>>>>>>>>>>>>>>>>>
+DataLoader: 4728
+	iters: 50, epoch: 1 | loss: 2.5215290 | duration: 52.35
+	speed: 1.0742s/iter; left time: 7843.0210s
+	iters: 100, epoch: 1 | loss: 2.3923635 | duration: 5.99
+	speed: 0.1198s/iter; left time: 868.6220s
+Epoch: 1 cost time: 64.66
+Epoch: 1, Steps: 147 | Train Loss: 3.1464134
+Updating learning rate to 0.0027983303288563873
+	iters: 50, epoch: 2 | loss: 1.8949300 | duration: 51.96
+	speed: 1.1673s/iter; left time: 8351.0198s
+	iters: 100, epoch: 2 | loss: 1.6318125 | duration: 6.04
+	speed: 0.1208s/iter; left time: 858.4438s
+Epoch: 2 cost time: 64.47
+Epoch: 2, Steps: 147 | Train Loss: 1.7723752
+Updating learning rate to 0.0027983303288563873
+	iters: 50, epoch: 3 | loss: 1.8277531 | duration: 52.44
+	speed: 1.1803s/iter; left time: 8270.5526s
+	iters: 100, epoch: 3 | loss: 1.6774547 | duration: 6.12
+	speed: 0.1224s/iter; left time: 851.7476s
+Epoch: 3 cost time: 64.95
+Epoch: 3, Steps: 147 | Train Loss: 1.4815311
+Updating learning rate to 0.0027983303288563873
+	iters: 50, epoch: 4 | loss: 1.6153539 | duration: 52.42
+	speed: 1.1777s/iter; left time: 8079.1827s
+	iters: 100, epoch: 4 | loss: 1.2463611 | duration: 5.77
+	speed: 0.1154s/iter; left time: 785.7316s
+Epoch: 4 cost time: 64.46
+Epoch: 4, Steps: 147 | Train Loss: 1.2817172
+Updating learning rate to 0.0027983303288563873
+	iters: 50, epoch: 5 | loss: 1.1937194 | duration: 52.29
+	speed: 1.1732s/iter; left time: 7875.5532s
+	iters: 100, epoch: 5 | loss: 0.8475498 | duration: 5.58
+	speed: 0.1115s/iter; left time: 742.9601s
+Epoch: 5 cost time: 64.28
+Epoch: 5, Steps: 147 | Train Loss: 1.1578153
+Updating learning rate to 0.0027983303288563873
+	iters: 50, epoch: 6 | loss: 1.2138462 | duration: 52.22
+	speed: 1.1742s/iter; left time: 7710.0566s
+	iters: 100, epoch: 6 | loss: 0.8178385 | duration: 6.13
+	speed: 0.1226s/iter; left time: 798.5683s
+Epoch: 6 cost time: 64.47
+Epoch: 6, Steps: 147 | Train Loss: 1.2034795
+Updating learning rate to 0.0027983303288563873
+	iters: 50, epoch: 7 | loss: 1.1119752 | duration: 52.00
+	speed: 1.1648s/iter; left time: 7476.7296s
+	iters: 100, epoch: 7 | loss: 1.2064922 | duration: 5.74
+	speed: 0.1148s/iter; left time: 731.0124s
+Epoch: 7 cost time: 63.86
+Epoch: 7, Steps: 147 | Train Loss: 1.1730494
+Updating learning rate to 0.0027983303288563873
+	iters: 50, epoch: 8 | loss: 1.1167450 | duration: 52.20
+	speed: 1.1683s/iter; left time: 7327.6534s
+	iters: 100, epoch: 8 | loss: 0.9503884 | duration: 5.67
+	speed: 0.1133s/iter; left time: 705.0740s
+Epoch: 8 cost time: 64.06
+Epoch: 8, Steps: 147 | Train Loss: 1.1368988
+Updating learning rate to 0.0027983303288563873
+	iters: 50, epoch: 9 | loss: 1.3164105 | duration: 51.79
+	speed: 1.1615s/iter; left time: 7114.0317s
+	iters: 100, epoch: 9 | loss: 1.4849279 | duration: 5.51
+	speed: 0.1101s/iter; left time: 668.9291s
+Epoch: 9 cost time: 63.65
+Epoch: 9, Steps: 147 | Train Loss: 1.1593459
+Updating learning rate to 0.0027983303288563873
+	iters: 50, epoch: 10 | loss: 1.4058383 | duration: 51.82
+	speed: 1.1656s/iter; left time: 6968.0890s
+	iters: 100, epoch: 10 | loss: 1.3469833 | duration: 5.42
+	speed: 0.1084s/iter; left time: 642.8638s
+Epoch: 10 cost time: 63.23
+Epoch: 10, Steps: 147 | Train Loss: 1.1075461
+Updating learning rate to 0.0027983303288563873
+	iters: 50, epoch: 11 | loss: 1.1212608 | duration: 51.83
+	speed: 1.1582s/iter; left time: 6753.3094s
+	iters: 100, epoch: 11 | loss: 1.1175116 | duration: 5.61
+	speed: 0.1121s/iter; left time: 648.2771s
+Epoch: 11 cost time: 63.39
+Epoch: 11, Steps: 147 | Train Loss: 1.1173940
+Updating learning rate to 0.0013991651644281937
+	iters: 50, epoch: 12 | loss: 0.9743052 | duration: 51.92
+	speed: 1.1591s/iter; left time: 6588.3507s
+	iters: 100, epoch: 12 | loss: 1.0257128 | duration: 5.47
+	speed: 0.1095s/iter; left time: 616.7865s
+Epoch: 12 cost time: 63.39
+Epoch: 12, Steps: 147 | Train Loss: 1.0809416
+Updating learning rate to 0.0013991651644281937
+	iters: 50, epoch: 13 | loss: 0.8144777 | duration: 51.40
+	speed: 1.1497s/iter; left time: 6365.6580s
+	iters: 100, epoch: 13 | loss: 0.8365632 | duration: 5.75
+	speed: 0.1150s/iter; left time: 631.1263s
+Epoch: 13 cost time: 63.29
+Epoch: 13, Steps: 147 | Train Loss: 1.0541749
+Updating learning rate to 0.0013991651644281937
+	iters: 50, epoch: 14 | loss: 1.2321010 | duration: 51.65
+	speed: 1.1576s/iter; left time: 6239.3997s
+	iters: 100, epoch: 14 | loss: 0.9505720 | duration: 5.62
+	speed: 0.1123s/iter; left time: 599.9368s
+Epoch: 14 cost time: 63.45
+Epoch: 14, Steps: 147 | Train Loss: 1.0602553
+Updating learning rate to 0.0013991651644281937
+	iters: 50, epoch: 15 | loss: 0.9753132 | duration: 51.39
+	speed: 1.1533s/iter; left time: 6046.9577s
+	iters: 100, epoch: 15 | loss: 0.8491199 | duration: 5.32
+	speed: 0.1064s/iter; left time: 552.3310s
+Epoch: 15 cost time: 62.89
+Epoch: 15, Steps: 147 | Train Loss: 1.0327813
+Updating learning rate to 0.0013991651644281937
+	iters: 50, epoch: 16 | loss: 0.7686887 | duration: 51.59
+	speed: 1.1571s/iter; left time: 5896.3694s
+	iters: 100, epoch: 16 | loss: 0.7754219 | duration: 5.49
+	speed: 0.1101s/iter; left time: 555.3631s
+Epoch: 16 cost time: 62.95
+Epoch: 16, Steps: 147 | Train Loss: 1.0817372
+Updating learning rate to 0.0013991651644281937
+	iters: 50, epoch: 17 | loss: 1.0238856 | duration: 51.74
+	speed: 1.1537s/iter; left time: 5709.5228s
+	iters: 100, epoch: 17 | loss: 0.7568512 | duration: 5.37
+	speed: 0.1075s/iter; left time: 526.5454s
+Epoch: 17 cost time: 63.14
+Epoch: 17, Steps: 147 | Train Loss: 1.0480932
+Updating learning rate to 0.0013991651644281937
+	iters: 50, epoch: 18 | loss: 1.1593013 | duration: 51.58
+	speed: 1.1539s/iter; left time: 5540.8543s
+	iters: 100, epoch: 18 | loss: 1.3221842 | duration: 5.59
+	speed: 0.1119s/iter; left time: 531.6029s
+Epoch: 18 cost time: 63.17
+Epoch: 18, Steps: 147 | Train Loss: 1.0236472
+Updating learning rate to 0.0013991651644281937
+	iters: 50, epoch: 19 | loss: 0.9000199 | duration: 51.55
+	speed: 1.1527s/iter; left time: 5366.0046s
+	iters: 100, epoch: 19 | loss: 1.3182392 | duration: 5.76
+	speed: 0.1151s/iter; left time: 530.1137s
+Epoch: 19 cost time: 63.60
+Epoch: 19, Steps: 147 | Train Loss: 1.0397578
+Updating learning rate to 0.0013991651644281937
+	iters: 50, epoch: 20 | loss: 0.6462542 | duration: 51.76
+	speed: 1.1627s/iter; left time: 5241.3105s
+	iters: 100, epoch: 20 | loss: 0.7189780 | duration: 5.55
+	speed: 0.1110s/iter; left time: 494.9235s
+Epoch: 20 cost time: 63.57
+Epoch: 20, Steps: 147 | Train Loss: 1.0775732
+Updating learning rate to 0.0013991651644281937
+	iters: 50, epoch: 21 | loss: 0.7793484 | duration: 51.64
+	speed: 1.1598s/iter; left time: 5057.7335s
+	iters: 100, epoch: 21 | loss: 1.0925665 | duration: 5.72
+	speed: 0.1143s/iter; left time: 492.9055s
+Epoch: 21 cost time: 63.32
+Epoch: 21, Steps: 147 | Train Loss: 1.0308589
+Updating learning rate to 0.0006995825822140968
+	iters: 50, epoch: 22 | loss: 0.8688020 | duration: 51.81
+	speed: 1.1572s/iter; left time: 4876.5848s
+	iters: 100, epoch: 22 | loss: 0.9116940 | duration: 5.51
+	speed: 0.1103s/iter; left time: 459.2289s
+Epoch: 22 cost time: 63.46
+Epoch: 22, Steps: 147 | Train Loss: 0.9909093
+Updating learning rate to 0.0006995825822140968
+	iters: 50, epoch: 23 | loss: 0.9592296 | duration: 51.92
+	speed: 1.1634s/iter; left time: 4731.3581s
+	iters: 100, epoch: 23 | loss: 1.4933726 | duration: 5.36
+	speed: 0.1072s/iter; left time: 430.6994s
+Epoch: 23 cost time: 63.24
+Epoch: 23, Steps: 147 | Train Loss: 1.0154990
+Updating learning rate to 0.0006995825822140968
+	iters: 50, epoch: 24 | loss: 0.6866950 | duration: 51.54
+	speed: 1.1518s/iter; left time: 4514.9241s
+	iters: 100, epoch: 24 | loss: 0.9082650 | duration: 5.39
+	speed: 0.1078s/iter; left time: 417.0924s
+Epoch: 24 cost time: 62.82
+Epoch: 24, Steps: 147 | Train Loss: 1.0120225
+Updating learning rate to 0.0006995825822140968
+	iters: 50, epoch: 25 | loss: 0.8654215 | duration: 51.75
+	speed: 1.1546s/iter; left time: 4356.3042s
+	iters: 100, epoch: 25 | loss: 1.0893817 | duration: 5.46
+	speed: 0.1092s/iter; left time: 406.6306s
+Epoch: 25 cost time: 63.16
+Epoch: 25, Steps: 147 | Train Loss: 0.9835011
+Updating learning rate to 0.0006995825822140968
+	iters: 50, epoch: 26 | loss: 0.7074739 | duration: 51.78
+	speed: 1.1562s/iter; left time: 4192.5428s
+	iters: 100, epoch: 26 | loss: 1.1877973 | duration: 5.43
+	speed: 0.1086s/iter; left time: 388.3807s
+Epoch: 26 cost time: 63.37
+Epoch: 26, Steps: 147 | Train Loss: 0.9866761
+Updating learning rate to 0.0006995825822140968
+	iters: 50, epoch: 27 | loss: 0.9828382 | duration: 51.65
+	speed: 1.1585s/iter; left time: 4030.3870s
+	iters: 100, epoch: 27 | loss: 0.8144439 | duration: 5.37
+	speed: 0.1074s/iter; left time: 368.2154s
+Epoch: 27 cost time: 63.03
+Epoch: 27, Steps: 147 | Train Loss: 0.9822531
+Updating learning rate to 0.0006995825822140968
+	iters: 50, epoch: 28 | loss: 0.9243746 | duration: 51.78
+	speed: 1.1577s/iter; left time: 3857.4912s
+	iters: 100, epoch: 28 | loss: 1.4689305 | duration: 5.30
+	speed: 0.1060s/iter; left time: 347.9840s
+Epoch: 28 cost time: 63.03
+Epoch: 28, Steps: 147 | Train Loss: 0.9788177
+Updating learning rate to 0.0006995825822140968
+	iters: 50, epoch: 29 | loss: 0.9470383 | duration: 52.06
+	speed: 1.1619s/iter; left time: 3700.5051s
+	iters: 100, epoch: 29 | loss: 0.8472375 | duration: 5.66
+	speed: 0.1132s/iter; left time: 354.9962s
+Epoch: 29 cost time: 63.74
+Epoch: 29, Steps: 147 | Train Loss: 0.9971470
+Updating learning rate to 0.0006995825822140968
+	iters: 50, epoch: 30 | loss: 0.7623888 | duration: 51.63
+	speed: 1.1550s/iter; left time: 3508.7467s
+	iters: 100, epoch: 30 | loss: 1.0755247 | duration: 5.51
+	speed: 0.1102s/iter; left time: 329.3204s
+Epoch: 30 cost time: 63.28
+Epoch: 30, Steps: 147 | Train Loss: 1.0297078
+Updating learning rate to 0.0006995825822140968
+	iters: 50, epoch: 31 | loss: 0.8669273 | duration: 51.93
+	speed: 1.1630s/iter; left time: 3362.3368s
+	iters: 100, epoch: 31 | loss: 0.8836845 | duration: 5.75
+	speed: 0.1149s/iter; left time: 326.4710s
+Epoch: 31 cost time: 64.12
+Epoch: 31, Steps: 147 | Train Loss: 1.0358190
+Updating learning rate to 0.0003497912911070484
+	iters: 50, epoch: 32 | loss: 0.9329473 | duration: 51.95
+	speed: 1.1693s/iter; left time: 3208.6851s
+	iters: 100, epoch: 32 | loss: 1.0290405 | duration: 5.67
+	speed: 0.1135s/iter; left time: 305.7065s
+Epoch: 32 cost time: 64.03
+Epoch: 32, Steps: 147 | Train Loss: 0.9802403
+Updating learning rate to 0.0003497912911070484
+	iters: 50, epoch: 33 | loss: 0.7853226 | duration: 52.06
+	speed: 1.1712s/iter; left time: 3041.6904s
+	iters: 100, epoch: 33 | loss: 0.7743966 | duration: 5.59
+	speed: 0.1119s/iter; left time: 284.9568s
+Epoch: 33 cost time: 63.71
+Epoch: 33, Steps: 147 | Train Loss: 0.9762572
+Updating learning rate to 0.0003497912911070484
+	iters: 50, epoch: 34 | loss: 0.9369959 | duration: 52.00
+	speed: 1.1629s/iter; left time: 2849.0171s
+	iters: 100, epoch: 34 | loss: 1.1005602 | duration: 5.58
+	speed: 0.1117s/iter; left time: 268.0420s
+Epoch: 34 cost time: 63.77
+Epoch: 34, Steps: 147 | Train Loss: 1.0161340
+Updating learning rate to 0.0003497912911070484
+	iters: 50, epoch: 35 | loss: 1.3578279 | duration: 52.00
+	speed: 1.1654s/iter; left time: 2683.9021s
+	iters: 100, epoch: 35 | loss: 1.2005644 | duration: 5.83
+	speed: 0.1166s/iter; left time: 262.6070s
+Epoch: 35 cost time: 63.91
+Epoch: 35, Steps: 147 | Train Loss: 0.9909309
+Updating learning rate to 0.0003497912911070484
+	iters: 50, epoch: 36 | loss: 1.1259691 | duration: 51.80
+	speed: 1.1593s/iter; left time: 2499.4436s
+	iters: 100, epoch: 36 | loss: 0.7261617 | duration: 5.77
+	speed: 0.1153s/iter; left time: 242.8482s
+Epoch: 36 cost time: 63.71
+Epoch: 36, Steps: 147 | Train Loss: 0.9862418
+Updating learning rate to 0.0003497912911070484
+	iters: 50, epoch: 37 | loss: 0.8119728 | duration: 52.02
+	speed: 1.1651s/iter; left time: 2340.6859s
+	iters: 100, epoch: 37 | loss: 0.8937173 | duration: 5.45
+	speed: 0.1090s/iter; left time: 213.4783s
+Epoch: 37 cost time: 63.46
+Epoch: 37, Steps: 147 | Train Loss: 0.9687887
+Updating learning rate to 0.0003497912911070484
+	iters: 50, epoch: 38 | loss: 0.8083885 | duration: 51.75
+	speed: 1.1566s/iter; left time: 2153.6264s
+	iters: 100, epoch: 38 | loss: 1.0707127 | duration: 5.52
+	speed: 0.1105s/iter; left time: 200.1613s
+Epoch: 38 cost time: 63.44
+Epoch: 38, Steps: 147 | Train Loss: 1.0101601
+Updating learning rate to 0.0003497912911070484
+	iters: 50, epoch: 39 | loss: 1.0868878 | duration: 51.51
+	speed: 1.1552s/iter; left time: 1981.1492s
+	iters: 100, epoch: 39 | loss: 1.1882823 | duration: 5.69
+	speed: 0.1137s/iter; left time: 189.3535s
+Epoch: 39 cost time: 63.26
+Epoch: 39, Steps: 147 | Train Loss: 1.0080307
+Updating learning rate to 0.0003497912911070484
+	iters: 50, epoch: 40 | loss: 1.2884383 | duration: 52.07
+	speed: 1.1643s/iter; left time: 1825.6115s
+	iters: 100, epoch: 40 | loss: 0.8344138 | duration: 5.90
+	speed: 0.1181s/iter; left time: 179.2181s
+Epoch: 40 cost time: 64.15
+Epoch: 40, Steps: 147 | Train Loss: 1.0110313
+Updating learning rate to 0.0003497912911070484
+	iters: 50, epoch: 41 | loss: 1.2463323 | duration: 51.86
+	speed: 1.1625s/iter; left time: 1651.8700s
+	iters: 100, epoch: 41 | loss: 1.0483831 | duration: 5.64
+	speed: 0.1129s/iter; left time: 154.7681s
+Epoch: 41 cost time: 63.80
+Epoch: 41, Steps: 147 | Train Loss: 0.9749718
+Updating learning rate to 0.0001748956455535242
+	iters: 50, epoch: 42 | loss: 0.9441282 | duration: 52.17
+	speed: 1.1709s/iter; left time: 1491.7086s
+	iters: 100, epoch: 42 | loss: 0.6655444 | duration: 5.95
+	speed: 0.1191s/iter; left time: 145.7258s
+Epoch: 42 cost time: 64.34
+Epoch: 42, Steps: 147 | Train Loss: 1.0147130
+Updating learning rate to 0.0001748956455535242
+	iters: 50, epoch: 43 | loss: 1.1219571 | duration: 51.80
+	speed: 1.1620s/iter; left time: 1309.6060s
+	iters: 100, epoch: 43 | loss: 0.8149987 | duration: 5.76
+	speed: 0.1152s/iter; left time: 124.0304s
+Epoch: 43 cost time: 63.98
+Epoch: 43, Steps: 147 | Train Loss: 0.9654133
+Updating learning rate to 0.0001748956455535242
+	iters: 50, epoch: 44 | loss: 0.6981521 | duration: 52.29
+	speed: 1.1757s/iter; left time: 1152.1860s
+	iters: 100, epoch: 44 | loss: 0.7651428 | duration: 5.94
+	speed: 0.1189s/iter; left time: 110.5444s
+Epoch: 44 cost time: 64.57
+Epoch: 44, Steps: 147 | Train Loss: 0.9731738
+Updating learning rate to 0.0001748956455535242
+	iters: 50, epoch: 45 | loss: 1.3941014 | duration: 51.79
+	speed: 1.1644s/iter; left time: 969.9756s
+	iters: 100, epoch: 45 | loss: 1.0961522 | duration: 5.87
+	speed: 0.1174s/iter; left time: 91.9100s
+Epoch: 45 cost time: 64.13
+Epoch: 45, Steps: 147 | Train Loss: 0.9800808
+Updating learning rate to 0.0001748956455535242
+	iters: 50, epoch: 46 | loss: 0.8516775 | duration: 52.13
+	speed: 1.1738s/iter; left time: 805.2465s
+	iters: 100, epoch: 46 | loss: 0.9153236 | duration: 6.00
+	speed: 0.1200s/iter; left time: 76.3390s
+Epoch: 46 cost time: 64.48
+Epoch: 46, Steps: 147 | Train Loss: 0.9863197
+Updating learning rate to 0.0001748956455535242
+	iters: 50, epoch: 47 | loss: 1.1042228 | duration: 52.30
+	speed: 1.1749s/iter; left time: 633.2530s
+	iters: 100, epoch: 47 | loss: 0.8408818 | duration: 5.84
+	speed: 0.1168s/iter; left time: 57.1006s
+Epoch: 47 cost time: 64.53
+Epoch: 47, Steps: 147 | Train Loss: 0.9997716
+Updating learning rate to 0.0001748956455535242
+	iters: 50, epoch: 48 | loss: 1.0130860 | duration: 52.00
+	speed: 1.1694s/iter; left time: 458.4130s
+	iters: 100, epoch: 48 | loss: 1.2984624 | duration: 6.09
+	speed: 0.1219s/iter; left time: 41.6812s
+Epoch: 48 cost time: 64.42
+Epoch: 48, Steps: 147 | Train Loss: 0.9420724
+Updating learning rate to 0.0001748956455535242
+	iters: 50, epoch: 49 | loss: 1.0476868 | duration: 51.78
+	speed: 1.1639s/iter; left time: 285.1675s
+	iters: 100, epoch: 49 | loss: 0.9205553 | duration: 5.88
+	speed: 0.1176s/iter; left time: 22.9264s
+Epoch: 49 cost time: 64.00
+Epoch: 49, Steps: 147 | Train Loss: 0.9927342
+Updating learning rate to 0.0001748956455535242
+	iters: 50, epoch: 50 | loss: 0.8757997 | duration: 52.17
+	speed: 1.1718s/iter; left time: 114.8363s
+	iters: 100, epoch: 50 | loss: 1.0551108 | duration: 5.76
+	speed: 0.1153s/iter; left time: 5.5329s
+Epoch: 50 cost time: 64.27
+Epoch: 50, Steps: 147 | Train Loss: 0.9711689
+Updating learning rate to 0.0001748956455535242
+>>>>>>>end training : 53m 13s>>>>>>>>>>>>>>>>>>>>>>>>>>
+>>>>>>>start testing - discrete : diffusion_denoised_x_UniTST_MP_ALL_RegimeWindows_1.0-KL2_N+1.0-Corr+1.0-FFT_sl128_ds0_cmTrue_ceTrue_ipTrue_RoPE_specialist_regime_2<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+DataLoader: 4728
+loading model
+>>>>>>>end testing - discrete : 1m 58s>>>>>>>>>>>>>>>>>>>>>>>>>>
+===== Log ended on 2026-08-27 20:33:21 =====
+
+
+===== Log started on 2026-08-27 22:21:03 =====
+>>>>>>>start testing - discrete : diffusion_denoised_x_UniTST_MP_ALL_RegimeWindows_1.0-KL2_N+1.0-Corr+1.0-FFT_sl128_ds0_cmTrue_ceTrue_ipTrue_RoPE_specialist_regime_2<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+DataLoader: 4728
+loading model
+>>>>>>>end testing - discrete : 2m 15s>>>>>>>>>>>>>>>>>>>>>>>>>>
+===== Log ended on 2026-08-27 22:23:18 =====
+
+
+===== Log started on 2026-08-27 22:29:47 =====
+DataLoader: 4728
+[OK] C:\Users\Xu Lab\Desktop\Mohan\HMM-Diffusion\data\pools\regime_k2\windows.npy shape=(128, 128, 10) mean=0.0040 var=0.0002
+[GEN] regime 3 from diffusion_denoised_x_UniTST_MP_ALL_RegimeWindows_1.0-KL2_N+1.0-Corr+1.0-FFT_sl128_ds0_cmTrue_ceTrue_ipTrue_RoPE_specialist_regime_3 (n_pool=128)
+Args in experiment:
+Namespace(task_name='diffusion_denoised_x', description='specialist_regime_3', model='UniTST_MP', checkpoints='C:\\Users\\Xu Lab\\Desktop\\Mohan\\HMM-Diffusion\\checkpoints\\', test_results='C:\\Users\\Xu Lab\\Desktop\\Mohan\\HMM-Diffusion\\test_results\\', individual=False, data='RegimeWindows', data_path='C:\\Users\\Xu Lab\\Desktop\\Mohan\\HMM-Diffusion\\data\\processed\\regime_windows\\regime_3.npy', regime_path='./warehouse/processed/macro_regime_3.csv', seq_len=128, scale='quantile', num_workers=10, batch_size=32, sample_multiplier=8, start_date='None', end_date='None', diffuser='GaussianDiffusion', total_steps=1000, scheduler='linear', enc_in=10, d_model=128, n_heads=8, e_layers=2, d_ff=512, dropout=0.1, activation='gelu', patch_len=16, stride=16, dispatchers=0, causal_mask=True, channel_embed=True, ind_proj=True, attn_proj=False, RoPE=True, use_fft=True, dts_loss='L1', use_tdt=False, prob_uncond=0.2, guidance_strength=0.2, n_regimes=3, prev_len=128, cond_type='ridx', ss_model='UniTST', mask_rate=0.2, sig_depth=3, sig_loss='L1', sig_uni=False, sig_log=False, kernel_type='rbf', sigma=1.0, dyadic_order=1, seq_len_multiplier=2, train_epochs=50, learning_rate=0.0027983303288563873, lr_decay_rounds=10, loss='1.0-KL2_N+1.0-Corr+1.0-FFT', weight_decay=0.0, use_amp=False, resume_path=None, grad_norm=False, gn_alpha=0.5, gn_learning_rate=0.01, pcgrad=False, use_gpu=True, gpu=0, device='cuda', compile=False, skip_train=False, skip_test=False, eval_sample_step=[450.0], eval_temperature=0.7473231454237225)
+Use device: cuda:0
+DataLoader: 4720
+[OK] C:\Users\Xu Lab\Desktop\Mohan\HMM-Diffusion\data\pools\regime_k3\windows.npy shape=(128, 128, 10) mean=0.0022 var=0.0001
+[GEN] regime 4 from diffusion_denoised_x_UniTST_MP_ALL_RegimeWindows_1.0-KL2_N+1.0-Corr+1.0-FFT_sl128_ds0_cmTrue_ceTrue_ipTrue_RoPE_specialist_regime_4 (n_pool=128)
+Args in experiment:
+Namespace(task_name='diffusion_denoised_x', description='specialist_regime_4', model='UniTST_MP', checkpoints='C:\\Users\\Xu Lab\\Desktop\\Mohan\\HMM-Diffusion\\checkpoints\\', test_results='C:\\Users\\Xu Lab\\Desktop\\Mohan\\HMM-Diffusion\\test_results\\', individual=False, data='RegimeWindows', data_path='C:\\Users\\Xu Lab\\Desktop\\Mohan\\HMM-Diffusion\\data\\processed\\regime_windows\\regime_4.npy', regime_path='./warehouse/processed/macro_regime_3.csv', seq_len=128, scale='quantile', num_workers=10, batch_size=32, sample_multiplier=8, start_date='None', end_date='None', diffuser='GaussianDiffusion', total_steps=1000, scheduler='linear', enc_in=10, d_model=128, n_heads=8, e_layers=2, d_ff=512, dropout=0.1, activation='gelu', patch_len=16, stride=16, dispatchers=0, causal_mask=True, channel_embed=True, ind_proj=True, attn_proj=False, RoPE=True, use_fft=True, dts_loss='L1', use_tdt=False, prob_uncond=0.2, guidance_strength=0.2, n_regimes=3, prev_len=128, cond_type='ridx', ss_model='UniTST', mask_rate=0.2, sig_depth=3, sig_loss='L1', sig_uni=False, sig_log=False, kernel_type='rbf', sigma=1.0, dyadic_order=1, seq_len_multiplier=2, train_epochs=50, learning_rate=0.0027983303288563873, lr_decay_rounds=10, loss='1.0-KL2_N+1.0-Corr+1.0-FFT', weight_decay=0.0, use_amp=False, resume_path=None, grad_norm=False, gn_alpha=0.5, gn_learning_rate=0.01, pcgrad=False, use_gpu=True, gpu=0, device='cuda', compile=False, skip_train=False, skip_test=False, eval_sample_step=[450.0], eval_temperature=0.7473231454237225)
+Use device: cuda:0
+DataLoader: 1440
+[OK] C:\Users\Xu Lab\Desktop\Mohan\HMM-Diffusion\data\pools\regime_k4\windows.npy shape=(128, 128, 10) mean=0.0020 var=0.0003
+[OK] done. Validate with the notebook's pool checks.
+===== Log ended on 2026-08-27 22:31:34 =====
+
+
+===== Log started on 2026-08-28 06:25:20 =====
+DataLoader: 4728
+[OK] C:\Users\Xu Lab\Desktop\Mohan\HMM-Diffusion\data\pools\regime_k2\windows.npy shape=(128, 128, 10) mean=0.0042 var=0.0002
+[GEN] regime 3 from diffusion_denoised_x_UniTST_MP_ALL_RegimeWindows_1.0-KL2_N+1.0-Corr+1.0-FFT_sl128_ds0_cmTrue_ceTrue_ipTrue_RoPE_specialist_regime_3 (n_pool=128)
+Args in experiment:
+Namespace(task_name='diffusion_denoised_x', description='specialist_regime_3', model='UniTST_MP', checkpoints='C:\\Users\\Xu Lab\\Desktop\\Mohan\\HMM-Diffusion\\checkpoints\\', test_results='C:\\Users\\Xu Lab\\Desktop\\Mohan\\HMM-Diffusion\\test_results\\', individual=False, data='RegimeWindows', data_path='C:\\Users\\Xu Lab\\Desktop\\Mohan\\HMM-Diffusion\\data\\processed\\regime_windows\\regime_3.npy', regime_path='./warehouse/processed/macro_regime_3.csv', seq_len=128, scale='quantile', num_workers=10, batch_size=32, sample_multiplier=8, start_date='None', end_date='None', diffuser='GaussianDiffusion', total_steps=1000, scheduler='linear', enc_in=10, d_model=128, n_heads=8, e_layers=2, d_ff=512, dropout=0.1, activation='gelu', patch_len=16, stride=16, dispatchers=0, causal_mask=True, channel_embed=True, ind_proj=True, attn_proj=False, RoPE=True, use_fft=True, dts_loss='L1', use_tdt=False, prob_uncond=0.2, guidance_strength=0.2, n_regimes=3, prev_len=128, cond_type='ridx', ss_model='UniTST', mask_rate=0.2, sig_depth=3, sig_loss='L1', sig_uni=False, sig_log=False, kernel_type='rbf', sigma=1.0, dyadic_order=1, seq_len_multiplier=2, train_epochs=50, learning_rate=0.0027983303288563873, lr_decay_rounds=10, loss='1.0-KL2_N+1.0-Corr+1.0-FFT', weight_decay=0.0, use_amp=False, resume_path=None, grad_norm=False, gn_alpha=0.5, gn_learning_rate=0.01, pcgrad=False, use_gpu=True, gpu=0, device='cuda', compile=False, skip_train=False, skip_test=False, eval_sample_step=[450.0], eval_temperature=0.7473231454237225)
+Use device: cuda:0
+DataLoader: 4720
+[OK] C:\Users\Xu Lab\Desktop\Mohan\HMM-Diffusion\data\pools\regime_k3\windows.npy shape=(128, 128, 10) mean=0.0022 var=0.0001
+[GEN] regime 4 from diffusion_denoised_x_UniTST_MP_ALL_RegimeWindows_1.0-KL2_N+1.0-Corr+1.0-FFT_sl128_ds0_cmTrue_ceTrue_ipTrue_RoPE_specialist_regime_4 (n_pool=128)
+Args in experiment:
+Namespace(task_name='diffusion_denoised_x', description='specialist_regime_4', model='UniTST_MP', checkpoints='C:\\Users\\Xu Lab\\Desktop\\Mohan\\HMM-Diffusion\\checkpoints\\', test_results='C:\\Users\\Xu Lab\\Desktop\\Mohan\\HMM-Diffusion\\test_results\\', individual=False, data='RegimeWindows', data_path='C:\\Users\\Xu Lab\\Desktop\\Mohan\\HMM-Diffusion\\data\\processed\\regime_windows\\regime_4.npy', regime_path='./warehouse/processed/macro_regime_3.csv', seq_len=128, scale='quantile', num_workers=10, batch_size=32, sample_multiplier=8, start_date='None', end_date='None', diffuser='GaussianDiffusion', total_steps=1000, scheduler='linear', enc_in=10, d_model=128, n_heads=8, e_layers=2, d_ff=512, dropout=0.1, activation='gelu', patch_len=16, stride=16, dispatchers=0, causal_mask=True, channel_embed=True, ind_proj=True, attn_proj=False, RoPE=True, use_fft=True, dts_loss='L1', use_tdt=False, prob_uncond=0.2, guidance_strength=0.2, n_regimes=3, prev_len=128, cond_type='ridx', ss_model='UniTST', mask_rate=0.2, sig_depth=3, sig_loss='L1', sig_uni=False, sig_log=False, kernel_type='rbf', sigma=1.0, dyadic_order=1, seq_len_multiplier=2, train_epochs=50, learning_rate=0.0027983303288563873, lr_decay_rounds=10, loss='1.0-KL2_N+1.0-Corr+1.0-FFT', weight_decay=0.0, use_amp=False, resume_path=None, grad_norm=False, gn_alpha=0.5, gn_learning_rate=0.01, pcgrad=False, use_gpu=True, gpu=0, device='cuda', compile=False, skip_train=False, skip_test=False, eval_sample_step=[450.0], eval_temperature=0.7473231454237225)
+Use device: cuda:0
+DataLoader: 1440
+[OK] C:\Users\Xu Lab\Desktop\Mohan\HMM-Diffusion\data\pools\regime_k4\windows.npy shape=(128, 128, 10) mean=0.0026 var=0.0004
+[OK] done. Validate with the notebook's pool checks.
+===== Log ended on 2026-08-28 06:27:07 =====
