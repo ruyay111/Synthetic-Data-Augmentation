@@ -21,17 +21,7 @@ jupyter lab HMM-Diffusion.ipynb
 jupyter lab Downstream-Volatility.ipynb
 ```
 
-Stage 3 needs a GPU and is the slow step. Stages 1, 2, and 4 run on a laptop.
-
-If stages 3 and 4 are missing, the notebooks use placeholder pools resampled from real per-regime
-returns. They still run end to end, but generated-data plots reflect the resampler, not diffusion.
-
-For stage 3:
-
-```
-PYTHON=/path/to/python DEVICE=cuda EPOCHS=50 ./scripts/03_train_specialists.sh
-REGIMES=0 EPOCHS=2 ./scripts/03_train_specialists.sh
-```
+Stage 3 needs a GPU for training the diffusion model, which is computational heavy.
 
 ## Layout
 
@@ -47,8 +37,8 @@ Downstream-Volatility.ipynb  volatility forecast on the stitched series
 
 ## Method
 
-Regime labels come from Vol_Regime on z-scored A001 log returns. The HMM is fit on the inner training
-slice (pre-2014). Diffusion specialists train on ten-asset 128-day windows with regime labels mapped
-by date. Pools are sampled per regime and stitched using the HMM's estimated path. The downstream
+Regime labels come from Vol_Regime on z-scored A001 log returns. The HMM is fit on the training
+data (pre-2014). Diffusion specialists train on ten-asset 128-day windows with regime labels.
+Pools are sampled per regime and stitched using the HMM's estimated path. The downstream
 notebook builds a synthetic price series aligned to the 2014+ benchmark window and runs a random-forest
 volatility forecast with mixed real and synthetic training data.
