@@ -1,17 +1,4 @@
-"""The four HMM variants of the reference notebook, behind one interface.
-
-Each variant estimates the same three things from the labeled training frame: a transition matrix and
-per-regime Gaussian emission parameters. Once fitted they are interchangeable, because state
-estimation always runs through the same ``forward_backward`` call.
-
-"Supervised" here means the regime labels are observed during fitting, so this is not Baum-Welch.
-The labels come from ``Vol_Regime``, which is a separate volatility-clustering pipeline, not from the
-HMM itself.
-
-The three NumPyro variants are fitted with NUTS and summarized by posterior means, matching the
-reference. The neural variant is fitted with Pyro SVI and a delta guide, so its "posterior" is a point
-estimate.
-"""
+"""HMM variant wrappers and shared evaluation helpers."""
 
 from __future__ import annotations
 
@@ -166,13 +153,7 @@ FITTERS: dict[str, Callable[[pd.DataFrame, int, dict[str, Any]], HMMFit]] = {
 
 
 def initial_distribution(train_data: pd.DataFrame, n_regimes: int) -> np.ndarray:
-    """Empirical regime frequencies of the training frame (notebook cell 26).
-
-    Reindexed over all ``n_regimes`` so the vector stays length ``K`` even when a regime is absent
-    from the slice. The reference indexes only the observed regimes, which silently produces a short
-    vector and a shape error downstream; volatility regimes cluster in time, so a temporal split can
-    easily strand one.
-    """
+    """Regime frequencies on the training frame, reindexed over all regimes."""
     counts = train_data.regime.value_counts(normalize=True)
     return counts.reindex(range(n_regimes), fill_value=0.0).sort_index().values
 
@@ -200,11 +181,7 @@ def accuracy_report(
     n_regimes: int,
     top_k: int = 2,
 ) -> dict[str, float]:
-    """Accuracy and top-k accuracy (notebook cells 27 and 31).
-
-    ``labels`` is passed explicitly so the top-k score stays well defined when a slice happens not to
-    contain every regime.
-    """
+    """Accuracy and top-k accuracy."""
     from sklearn.metrics import accuracy_score, top_k_accuracy_score
 
     return {

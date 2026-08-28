@@ -1,12 +1,4 @@
-"""Assembling a synthetic return series from per-regime pools, and the paired comparison figure.
-
-Reimplements ``hmmgan1.utils.hmm_gan_plot`` without its TensorFlow import (see
-``third_party/VENDORED.md``). The stitching rule is unchanged: walk the regime path and, at each step,
-take the next unused value from that regime's pool, tracked by a per-regime counter.
-
-The counters are what tie the synthetic series to the HMM. Nothing about the pools is conditioned on
-the regime path; the path only decides which pool each step is drawn from.
-"""
+"""Stitch per-regime pools along a regime path."""
 
 from __future__ import annotations
 
@@ -17,13 +9,7 @@ import pandas as pd
 def stitch(
     generated_images: dict[str, np.ndarray], regime_path: np.ndarray
 ) -> np.ndarray:
-    """Draw one value per step from the pool of the regime assigned to that step.
-
-    ``regime_path`` is either the true regime labels (the oracle stitch of notebook cell 15) or the
-    HMM's smoothed state estimates (cells 29, 33, and their counterparts in the other variants).
-
-    Raises if a pool runs dry, which means the pools were sampled too small for this path.
-    """
+    """Draw one value per step from the pool for that step's regime."""
     counters: dict[str, int] = {key: 0 for key in generated_images}
     output = np.empty(len(regime_path), dtype=float)
 
@@ -51,12 +37,7 @@ def backtest_table(
     estimated_regimes: np.ndarray,
     n_regimes: int,
 ) -> pd.DataFrame:
-    """Per-regime real vs generated mean and variance (notebook cell 34).
-
-    Rows are grouped by the *true* regime, while the generated values were drawn according to the
-    HMM's *estimated* regime. The comparison therefore reflects both generator quality and state
-    estimation accuracy, exactly as in the reference.
-    """
+    """Per-regime real vs generated mean and variance."""
     frame = pd.DataFrame(
         {
             "regime": np.asarray(real_regimes).astype(int),

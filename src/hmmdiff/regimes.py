@@ -1,14 +1,4 @@
-"""Volatility regime labeling and the label cache.
-
-Wraps the reference ``Vol_Regime`` (ARCH conditional volatility, PELT changepoints, Wasserstein
-segment affinity, self-tuning spectral clustering) and persists its output.
-
-The cache is load-bearing rather than a speed optimization. ``assign_clusters`` selects a cluster
-count and assignment by minimizing a rotation-alignment cost with conjugate gradient, which is not
-guaranteed to land in the same place on a rerun. The specialists in ``data/processed/regime_windows``
-are trained against one specific labeling, so every downstream stage must read that same labeling back
-rather than recomputing it.
-"""
+"""Volatility regime labeling and cached label I/O."""
 
 from __future__ import annotations
 
@@ -173,13 +163,7 @@ def _labels_ok(
 
 
 def fit_regimes(train_series: np.ndarray, cfg: dict[str, Any]) -> RegimeLabels:
-    """Run the full ``Vol_Regime`` pipeline on the training series.
-
-    Tries changepoint penalties and the configured clustering method. ``spectral`` matches the
-    reference notebook; ``kmeans`` forces five clusters on the rotated spectral embedding, which is
-    also the setting that can put enough post-2001 low-volatility days into regime 0 for real
-    128-day diffusion windows.
-    """
+    """Run Vol_Regime on the training series and return cached labels."""
     n_regimes = int(cfg["regimes"]["n_regimes"])
     methods = _clustering_methods(cfg)
     attempts: list[dict[str, Any]] = []
@@ -270,7 +254,7 @@ def _build_metadata(
 
 
 def average_regime_length(labels: np.ndarray) -> dict[str, float]:
-    """Mean number of consecutive days spent in each regime per visit (notebook cell 9)."""
+    """Mean consecutive days per regime visit."""
     regime_series = pd.Series(labels)
     diffs = regime_series.diff()
     switchpoints = diffs.dropna()[diffs != 0].index.tolist() + [regime_series.shape[0]]
@@ -329,14 +313,14 @@ def load_labels(path: Path) -> RegimeLabels:
 
 
 def ewm_volatility(series: np.ndarray, com: float) -> np.ndarray:
-    """Exponentially weighted volatility of the return series (notebook cell 7)."""
+    """Exponentially weighted volatility of the return series."""
     return np.nan_to_num(
         np.sqrt(pd.DataFrame({"Column1": series}).ewm(com=com).var()).values
     )
 
 
 def empirical_transition_matrix(labels: np.ndarray, n_regimes: int) -> np.ndarray:
-    """Row-normalized transition counts over the full label path (notebook cell 20)."""
+    """Row-normalized transition counts over the label path."""
     counts: dict[str, int] = defaultdict(int)
     for i in range(len(labels) - 1):
         counts[f"{int(labels[i])}->{int(labels[i + 1])}"] += 1

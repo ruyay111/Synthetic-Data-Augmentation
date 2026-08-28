@@ -159,9 +159,9 @@ def save_windows(
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     for regime, block in windows.items():
-        path = output_dir / f"regime_{regime}.npy"
-        np.save(path, block)
-        manifest["regimes"][str(regime)]["path"] = str(path)
+        filename = f"regime_{regime}.npy"
+        np.save(output_dir / filename, block)
+        manifest["regimes"][str(regime)]["path"] = filename
     (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
 

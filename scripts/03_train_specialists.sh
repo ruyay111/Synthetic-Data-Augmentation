@@ -59,7 +59,7 @@ LOSS="${LOSS:-${CFG_LOSS}}"
 WINDOWS_DIR="${REPO_ROOT}/${CFG_WINDOWS}"
 CHECKPOINTS_DIR="${REPO_ROOT}/${CFG_CHECKPOINTS}"
 TEST_RESULTS_DIR="${REPO_ROOT}/${CFG_TEST_RESULTS}"
-RUN_PY="${REPO_ROOT}/third_party/diffusion/run.py"
+RUN_PY="${REPO_ROOT}/reference_model/diffusion/run.py"
 
 if [[ -n "${REGIMES:-}" ]]; then
   read -r -a REGIME_LIST <<< "${REGIMES}"

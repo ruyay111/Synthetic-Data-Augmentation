@@ -1,9 +1,4 @@
-"""Every figure from the reference notebook.
-
-Figure sizes, axis limits, and titles follow ``Supervised HMMs.ipynb`` so the output is directly
-comparable. The only intentional change is the title of the paired generated-returns panel, which
-says "Diffusion" instead of "GAN".
-"""
+"""Plotting helpers for returns, regimes, and generated series."""
 
 from __future__ import annotations
 
@@ -32,10 +27,7 @@ def plot_regime_spans(
     figsize: tuple[int, int] = (15, 5),
     title: str = "Training Returns & Volatility Regimes",
 ) -> None:
-    """Returns with regime-colored spans (notebook cells 6 and 7).
-
-    ``overlay`` draws the EWMA volatility on top, as cell 7 does.
-    """
+    """Returns with regime-colored background spans."""
     colors = _regime_colors()
     plt.figure(figsize=figsize)
     plt.plot(series)
@@ -63,7 +55,7 @@ def plot_estimates(
     title: str,
     figsize: tuple[int, int] = (10, 6),
 ) -> None:
-    """Estimated against true regimes (notebook cells 28 and 32)."""
+    """Estimated vs true regimes."""
     plt.figure(figsize=figsize)
     plt.plot(estimates, label="Estimate")
     plt.plot(truth, label="Truth")
@@ -74,31 +66,27 @@ def plot_estimates(
 
 def plot_real_vs_generated(
     real_returns: np.ndarray,
-    real_regimes: np.ndarray,
+    real_regimes: np.ndarray | None,
     generated_returns: np.ndarray,
     generated_regimes: np.ndarray,
     figsize: tuple[int, int] = (20, 5),
     ylim: tuple[float, float] = (-8, 6),
     generated_title: str = "HMM Diffusion Generated Returns",
+    suptitle: str | None = None,
 ) -> None:
-    """The paired comparison figure, replacing ``hmmgan1.utils.hmm_gan_plot``.
-
-    Left panel is the observed series with its true regime path; right panel is the stitched
-    synthetic series with the HMM's estimated regime path. Shared y-limits make the two panels
-    directly comparable, which is the whole point of the figure.
-
-    ``generated_title`` must state what actually produced the right panel. When the specialists have
-    not been trained the pools hold resampled real returns, and a panel labelled as diffusion output
-    would be simply wrong.
-    """
-    plt.figure(figsize=figsize)
+    """Real vs generated returns with regime overlays."""
+    fig = plt.figure(figsize=figsize)
+    if suptitle:
+        fig.suptitle(suptitle, y=1.02)
 
     plt.subplot(1, 2, 1)
     plt.plot(real_returns)
-    plt.plot(real_regimes, color="black", label="regime")
+    if real_regimes is not None:
+        plt.plot(real_regimes, color="black", label="regime")
     plt.title("Real Returns")
     plt.ylim(*ylim)
-    plt.legend()
+    if real_regimes is not None:
+        plt.legend()
 
     plt.subplot(1, 2, 2)
     plt.plot(generated_returns)
@@ -107,7 +95,46 @@ def plot_real_vs_generated(
     plt.ylim(*ylim)
     plt.legend()
 
+    plt.tight_layout()
     plt.show()
+
+
+def plot_paper_train_test(
+    train_real: np.ndarray,
+    train_true_regimes: np.ndarray,
+    train_estimated_regimes: np.ndarray,
+    test_real: np.ndarray,
+    test_true_regimes: np.ndarray,
+    test_estimated_regimes: np.ndarray,
+    generated_images: dict[str, np.ndarray],
+    generated_title: str = "HMM Diffusion Generated Returns",
+    ylim: tuple[float, float] = (-8, 6),
+) -> tuple[np.ndarray, np.ndarray]:
+    """Train and validation real vs stitched generated returns."""
+    from . import stitch
+
+    train_generated = stitch.stitch(generated_images, train_estimated_regimes)
+    test_generated = stitch.stitch(generated_images, test_estimated_regimes)
+
+    plot_real_vs_generated(
+        train_real,
+        train_true_regimes,
+        train_generated,
+        train_estimated_regimes,
+        ylim=ylim,
+        generated_title=generated_title,
+        suptitle="Real and HMM-Diffusion Generated Log Returns, Training Set",
+    )
+    plot_real_vs_generated(
+        test_real,
+        test_true_regimes,
+        test_generated,
+        test_estimated_regimes,
+        ylim=ylim,
+        generated_title=generated_title,
+        suptitle="Real and HMM-Diffusion Generated Log Returns, Test Set",
+    )
+    return train_generated, test_generated
 
 
 def plot_elbo(losses: list[float], figsize: tuple[int, int] = (10, 4)) -> None:
@@ -121,7 +148,7 @@ def plot_elbo(losses: list[float], figsize: tuple[int, int] = (10, 4)) -> None:
 
 
 def regime_moments(series: np.ndarray, labels: np.ndarray, n_regimes: int) -> pd.DataFrame:
-    """Per-regime mean and variance of the observed emissions (notebook cell 18)."""
+    """Per-regime mean and variance of emissions."""
     rows = []
     for regime in range(n_regimes):
         subset = series[labels == regime]

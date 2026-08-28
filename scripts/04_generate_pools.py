@@ -3,12 +3,12 @@
 
 Univariate adaptation of ``generate_specialist_pools.py`` from the ruya tree. Writes
 
-  data/pools/regime_k{k}/windows.npy   (n_pool, seq_len, 1) in z-scored log-return units
+  data/pools/regime_k{k}/windows.npy   (n_pool, seq_len, n_channels) in raw log-return units
   data/pools/regime_k{k}/meta.json
 
-The output is already in the notebook's ``emission`` units: the dataset fits a QuantileTransformer on
-the training windows and ``generate_data`` inverse-transforms before returning, so training on
-z-scored input yields z-scored output.
+Specialists train on quantile-scaled windows; ``generate_data`` inverse-transforms back to **raw**
+log returns. The notebook applies the same global A001 z-score as the HMM when loading pools
+(``pools.load_generated_images(..., returns=returns)``), so no retraining is required.
 """
 
 from __future__ import annotations
@@ -28,24 +28,62 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from hmmdiff.config import config_path, load_config  # noqa: E402
 
-DIFFUSION_DIR = REPO_ROOT / "third_party" / "diffusion"
+DIFFUSION_DIR = REPO_ROOT / "reference_model" / "diffusion"
 # run.py chdirs to the diffusion directory; the experiment classes assume that layout, so match it.
 os.chdir(DIFFUSION_DIR)
 sys.path.insert(0, str(DIFFUSION_DIR))
 
 from src.exp.exp_diffusion_denoised_x import Exp_Diffusion_Denoised_X  # noqa: E402
-from src.utils.utils import process_model_dict  # noqa: E402
+
+
+def resolve_pool_device(requested: str | None, checkpoint_device: str, use_gpu: bool) -> str:
+    """Use the checkpoint device when available; otherwise fall back to MPS or CPU."""
+    import torch
+
+    if requested is not None:
+        return requested
+
+    device = str(checkpoint_device or "auto")
+    if device == "auto":
+        return "auto"
+    if not use_gpu or device == "cpu":
+        return "cpu"
+    if device == "cuda":
+        if torch.cuda.is_available():
+            return "cuda"
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            print("[WARN] Checkpoint was trained on CUDA; sampling on MPS instead.")
+            return "mps"
+        print("[WARN] Checkpoint was trained on CUDA; sampling on CPU instead.")
+        return "cpu"
+    if device == "mps":
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return "mps"
+        print("[WARN] Checkpoint requested MPS; sampling on CPU instead.")
+        return "cpu"
+    return device
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=None)
     parser.add_argument("--n-pool", type=int, default=None, help="Override config sampling.n_pool.")
-    parser.add_argument("--device", default=None, help="cuda, mps, or cpu. Default: checkpoint's.")
+    parser.add_argument(
+        "--device",
+        default=None,
+        help="cuda, mps, or cpu. Default: checkpoint device with auto-fallback if unavailable.",
+    )
     parser.add_argument("--regimes", type=int, nargs="*", default=None)
     parser.add_argument("--description-template", default="specialist_regime_{k}")
     parser.add_argument("--force", action="store_true", help="Resample regimes that already exist.")
     return parser.parse_args()
+
+
+def repo_relative(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
 
 
 def find_checkpoint_dir(checkpoints_root: Path, description: str) -> Path:
@@ -63,21 +101,45 @@ def find_checkpoint_dir(checkpoints_root: Path, description: str) -> Path:
     return sorted(matches, key=lambda p: p.stat().st_mtime, reverse=True)[0]
 
 
-def load_run_args(checkpoint_dir: Path, device: str | None) -> Namespace:
+def load_run_args(
+    checkpoint_dir: Path, device: str | None, *, regime: int, cfg: dict
+) -> Namespace:
     args_path = checkpoint_dir / "args.json"
     if not args_path.exists():
         raise FileNotFoundError(f"Missing {args_path}")
     args = Namespace(**json.loads(args_path.read_text(encoding="utf-8")))
     if not hasattr(args, "compile"):
         args.compile = False
-    if device is not None:
-        args.device = device
-        args.use_gpu = device != "cpu"
+
+    resolved = resolve_pool_device(
+        device, getattr(args, "device", "cuda"), getattr(args, "use_gpu", True)
+    )
+    args.device = resolved
+    args.use_gpu = resolved != "cpu"
+
+    # Checkpoints trained on another machine may embed foreign paths in args.json.
+    windows_path = config_path(cfg, "regime_windows") / f"regime_{regime}.npy"
+    if not windows_path.exists():
+        raise FileNotFoundError(
+            f"{windows_path} not found. Run scripts/02_build_diffusion_dataset.py first."
+        )
+    args.data_path = str(windows_path)
     return args
 
 
-def generate_pool(checkpoint_dir: Path, cfg: dict, n_pool: int, device: str | None) -> np.ndarray:
-    args = load_run_args(checkpoint_dir, device)
+def load_checkpoint_state(checkpoint: Path) -> dict:
+    """Load a specialist checkpoint on CPU so CUDA-trained weights work on Mac."""
+    import torch
+
+    state = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    return {key.replace("_orig_mod.", ""): value for key, value in state.items()}
+
+
+def generate_pool(
+    checkpoint_dir: Path, cfg: dict, n_pool: int, device: str | None, regime: int
+) -> np.ndarray:
+    args = load_run_args(checkpoint_dir, device, regime=regime, cfg=cfg)
+    print(f"  device={args.device}")
     seq_len = int(args.seq_len)
     n_channels = int(args.enc_in)
 
@@ -85,7 +147,7 @@ def generate_pool(checkpoint_dir: Path, cfg: dict, n_pool: int, device: str | No
     checkpoint = checkpoint_dir / "checkpoint.pth"
     if not checkpoint.exists():
         raise FileNotFoundError(f"Missing {checkpoint}")
-    exp.model.load_state_dict(process_model_dict(str(checkpoint)))
+    exp.model.load_state_dict(load_checkpoint_state(checkpoint))
 
     # The dataset is reloaded because generate_data needs its fitted scaler to invert the transform.
     dataset, _ = exp._get_data()
@@ -135,7 +197,7 @@ def main() -> int:
             continue
 
         print(f"[GEN] regime {regime} from {checkpoint_dir.name} (n_pool={n_pool})")
-        windows = generate_pool(checkpoint_dir, cfg, n_pool, args.device)
+        windows = generate_pool(checkpoint_dir, cfg, n_pool, args.device, regime)
 
         out_dir.mkdir(parents=True, exist_ok=True)
         np.save(out_dir / "windows.npy", windows)
@@ -148,9 +210,9 @@ def main() -> int:
             "temperature": float(cfg["sampling"]["temperature"]),
             "sampler": cfg["sampling"]["sampler"],
             "method": cfg["sampling"]["method"],
-            "checkpoint_dir": str(checkpoint_dir),
+            "checkpoint_dir": repo_relative(checkpoint_dir),
             "generated_at": datetime.now(timezone.utc).isoformat(),
-            "units": "z_scored_log_returns",
+            "units": "raw_log_returns",
             "mean": float(windows.mean()),
             "var": float(windows.var()),
         }

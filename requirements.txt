@@ -32,3 +32,6 @@ jax>=0.4.20
 jaxlib>=0.4.20
 funsor>=0.4.5
 pyro-ppl>=1.8.6
+
+# Downstream volatility forecasting (Downstream-Volatility.ipynb).
+ta>=0.11

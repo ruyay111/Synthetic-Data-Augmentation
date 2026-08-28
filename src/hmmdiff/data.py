@@ -1,11 +1,4 @@
-"""Price loading, return preprocessing, and the two nested train/test splits.
-
-Ports cells 4-5 and the splitting logic of cell 17 of ``Supervised HMMs.ipynb``. The chain is
-deliberately literal: drop the stale leading rows, take log returns, then z-score using the mean and
-standard deviation of the *entire* post-1988 series before any split is applied. That last detail
-matters, because it means both splits share one scaling constant rather than each being standardized
-on its own.
-"""
+"""Price loading, return preprocessing, and train/test splits."""
 
 from __future__ import annotations
 
@@ -21,13 +14,7 @@ from .config import config_path
 
 @dataclass(frozen=True)
 class Splits:
-    """The nested splits the reference notebook uses.
-
-    The outer split divides the full return series into ``train`` and ``test``. The inner split
-    divides the *training* series into the ``train_data`` and ``val_data`` frames the HMMs are fit and
-    evaluated on. The notebook labels its inner validation slice "test" in printed output; the outer
-    test slice is never used. Index positions are relative to the full return series.
-    """
+    """Outer train/test split and inner train/validation split."""
 
     n_total: int
     train_end: int
@@ -90,6 +77,12 @@ def build_returns(cfg: dict[str, Any]) -> pd.DataFrame:
             "split": split_tag,
         }
     )
+
+
+def a001_log_return_scale(returns: pd.DataFrame) -> tuple[float, float]:
+    """Global mean and std for A001 log returns used in z-scoring."""
+    log_return = returns["log_return"]
+    return float(log_return.mean()), float(log_return.std())
 
 
 def save_returns(returns: pd.DataFrame, path: Path) -> None:
@@ -174,16 +167,7 @@ def train_returns(returns: pd.DataFrame) -> np.ndarray:
 def build_model_frames(
     returns: pd.DataFrame, regime_labels: np.ndarray, cfg: dict[str, Any]
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Build the ``train_data`` and ``val_data`` frames of notebook cell 17.
-
-    Columns are ``regime``, ``emission``, ``emission_lag``, in that order, matching the column order
-    the NumPyro models index positionally.
-
-    Deviation from the reference: cell 17 writes ``vc.regime_labels[train_val_split]``, a scalar
-    index rather than a slice, so its ``val_data['regime']`` is one value broadcast across every row.
-    We slice correctly. No reported number changes, because the reference recomputes the correct
-    validation labels in its accuracy and backtest cells and never reads ``val_data['regime']``.
-    """
+    """Build train_data and val_data frames for HMM fitting."""
     train_series = train_returns(returns)
     splits = compute_splits(len(returns), cfg)
     cut = splits.train_val_split

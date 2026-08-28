@@ -1,8 +1,4 @@
-"""Configuration loading and import bootstrapping.
-
-Every script and notebook cell resolves paths through here, so the pipeline behaves the same whether
-it is invoked from the repository root, from ``scripts/``, or from ``notebooks/``.
-"""
+"""Configuration loading and import bootstrapping."""
 
 from __future__ import annotations
 
@@ -43,16 +39,16 @@ def config_path(cfg: dict[str, Any], key: str) -> Path:
 
 
 def bootstrap_imports(diffusion: bool = False) -> None:
-    """Put the vendored packages and ``src`` on ``sys.path``.
+    """Put the reference model packages and ``src`` on ``sys.path``.
 
-    ``third_party/hmmgan`` is always needed. The diffusion tree is opt-in because importing it pulls
+    ``reference_model/hmmgan`` is always needed. The diffusion tree is opt-in because importing it pulls
     in torch, which is slow and unnecessary for the HMM-only parts of the pipeline. Note that the
     diffusion tree has no ``__init__.py`` files and expects its own root on ``sys.path`` so that
-    ``import src.exp...`` resolves; see ``third_party/VENDORED.md``.
+    ``import src.exp...`` resolves; see ``reference_model/VENDORED.md``.
     """
-    entries = [REPO_ROOT / "src", REPO_ROOT / "third_party"]
+    entries = [REPO_ROOT / "src", REPO_ROOT / "reference_model"]
     if diffusion:
-        entries.append(REPO_ROOT / "third_party" / "diffusion")
+        entries.append(REPO_ROOT / "reference_model" / "diffusion")
     for entry in entries:
         text = str(entry)
         if text not in sys.path:

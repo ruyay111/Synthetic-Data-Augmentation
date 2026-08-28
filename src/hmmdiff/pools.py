@@ -1,21 +1,15 @@
-"""Loading the sampled diffusion pools into the format the notebook's stitching code expects.
-
-Each specialist is sampled into ``data/pools/regime_k{k}/windows.npy`` of shape
-``(n_pool, seq_len, 10)``. The HMM notebook consumes the A001 channel only (``channel=0``); correlation
-evaluation uses all ten channels.
-
-Concatenating independent windows leaves a discontinuity every ``seq_len`` steps. This is deliberate:
-the reference GAN has the same artifact, because ``recursive_simulator`` concatenates independent
-128-step chunks. Matching it keeps the comparison honest.
-"""
+"""Load diffusion pools and prepare them for stitching."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 def pool_dir(pools_root: Path, regime: int) -> Path:
@@ -38,19 +32,66 @@ def load_pool_meta(pools_root: Path, regime: int) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
 
 
+def zscore_log_returns(raw: np.ndarray, mu: float, sd: float) -> np.ndarray:
+    """Map raw log returns to HMM ``emission`` units using global (μ, σ)."""
+    return (np.asarray(raw, dtype=float) - mu) / sd
+
+
+def regime_emission_stats(
+    emissions: np.ndarray, regimes: np.ndarray, n_regimes: int
+) -> dict[int, tuple[float, float]]:
+    """Per-regime (mean, std) of HMM emissions on the inner training slice."""
+    stats: dict[int, tuple[float, float]] = {}
+    emissions = np.asarray(emissions, dtype=float)
+    regimes = np.asarray(regimes).astype(int)
+    for regime in range(n_regimes):
+        subset = emissions[regimes == regime]
+        if subset.size == 0:
+            raise ValueError(f"Regime {regime} has no observations in the calibration slice.")
+        stats[regime] = (float(subset.mean()), float(subset.std()))
+    return stats
+
+
+def affine_calibrate(
+    values: np.ndarray, target_mean: float, target_std: float
+) -> np.ndarray:
+    """Match ``values`` to ``(target_mean, target_std)`` while preserving rank order."""
+    values = np.asarray(values, dtype=float)
+    src_mean = float(values.mean())
+    src_std = float(values.std())
+    if src_std < 1e-12:
+        return np.full_like(values, target_mean)
+    return (values - src_mean) * (target_std / src_std) + target_mean
+
+
 def load_generated_images(
     pools_root: Path,
     n_regimes: int,
     channel: int = 0,
     seed: int | None = None,
     n_windows: int | None = None,
+    *,
+    returns: "pd.DataFrame | None" = None,
+    zscore_mu: float | None = None,
+    zscore_sd: float | None = None,
+    calibrate_regimes: dict[int, tuple[float, float]] | None = None,
 ) -> dict[str, np.ndarray]:
-    """Build the ``generated_images`` dict keyed by regime string, as the notebook uses it.
+    """Load pools as flat z-scored return arrays keyed by regime."""
+    if (zscore_mu is None) ^ (zscore_sd is None):
+        raise ValueError("Pass both zscore_mu and zscore_sd, or neither.")
 
-    Each value is a flat 1-D array of z-scored log returns. With ``seed`` set, ``n_windows`` windows
-    are drawn without replacement in a reproducible order, which allows alternative pool
-    realizations to be tested without re-running the sampler.
-    """
+    if returns is not None:
+        from .data import a001_log_return_scale
+
+        if channel != 0:
+            raise ValueError(
+                "Automatic z-scoring from returns only supports channel=0 (A001). "
+                "Pass zscore_mu and zscore_sd explicitly for other channels."
+            )
+        auto_mu, auto_sd = a001_log_return_scale(returns)
+        zscore_mu = auto_mu if zscore_mu is None else zscore_mu
+        zscore_sd = auto_sd if zscore_sd is None else zscore_sd
+
     generated: dict[str, np.ndarray] = {}
     rng = np.random.default_rng(seed) if seed is not None else None
     for regime in range(n_regimes):
@@ -60,7 +101,13 @@ def load_generated_images(
             pool = pool[rng.choice(pool.shape[0], size=take, replace=False)]
         elif n_windows is not None:
             pool = pool[: min(n_windows, pool.shape[0])]
-        generated[str(regime)] = pool[:, :, channel].reshape(-1).astype(float)
+        flat = pool[:, :, channel].reshape(-1).astype(float)
+        if zscore_mu is not None and zscore_sd is not None:
+            flat = zscore_log_returns(flat, zscore_mu, zscore_sd)
+        if calibrate_regimes is not None:
+            target_mean, target_std = calibrate_regimes[regime]
+            flat = affine_calibrate(flat, target_mean, target_std)
+        generated[str(regime)] = flat
     return generated
 
 
@@ -75,13 +122,7 @@ def placeholder_pools(
     size: int,
     seed: int = 0,
 ) -> dict[str, np.ndarray]:
-    """Stand-in pools drawn with replacement from the real per-regime returns.
-
-    These exist only so the notebook and its plots can be developed and checked before the
-    specialists finish training. They are an upper bound on marginal fidelity and carry no temporal
-    structure whatsoever, since every draw is independent. Any result produced from them says nothing
-    about the diffusion models.
-    """
+    """Stand-in pools drawn with replacement from real per-regime returns."""
     rng = np.random.default_rng(seed)
     pools: dict[str, np.ndarray] = {}
     for regime in range(n_regimes):

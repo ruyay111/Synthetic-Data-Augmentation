@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stage 3: train one unconditional UniTST_MP diffusion specialist per volatility regime.
 
-Windows-friendly counterpart of ``03_train_specialists.sh``. Calls ``third_party/diffusion/run.py``
+Windows-friendly counterpart of ``03_train_specialists.sh``. Calls ``reference_model/diffusion/run.py``
 with the same flags. Absolute paths are required because ``run.py`` chdirs to its own directory.
 
 After each specialist trains, ``test()`` writes dist/autocorr/moments/cov/corr plots at
@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from hmmdiff.config import config_path, load_config  # noqa: E402
 
 MIN_WINDOWS = 8
-RUN_PY = Path(__file__).resolve().parents[1] / "third_party" / "diffusion" / "run.py"
+RUN_PY = Path(__file__).resolve().parents[1] / "reference_model" / "diffusion" / "run.py"
 
 
 def parse_args() -> argparse.Namespace:
