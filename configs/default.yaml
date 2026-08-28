@@ -59,6 +59,8 @@ regimes:
     - 45
     - 15
     - 12
+  # Used only when self-tuning spectral clustering cannot yield five usable regimes.
+  clustering_seed: 0
   ewm_com: 0.5
 
 diffusion:

@@ -61,21 +61,82 @@ def _inner_train_cut(train_len: int, cfg: dict[str, Any]) -> int:
     return int(train_len * cfg["data"]["train_val_fraction"])
 
 
-def _run_vol_regime(train_series: np.ndarray, penalty: int, n_regimes: int) -> tuple[Any, np.ndarray]:
-    """Run Vol_Regime with tqdm suppressed so penalty sweeps stay readable."""
+def _prepare_vol_regime(train_series: np.ndarray, penalty: int) -> Any:
     from hmmgan.evaluation import Vol_Regime
 
     vc = Vol_Regime(train_series)
     vc.get_vol()
     vc.get_changepoints(pen=penalty)
     vc.get_attr()
+    return vc
+
+
+def _finalize_cluster_assignment(
+    vc: Any, train_series: np.ndarray, clusters_assign: dict[int, int]
+) -> np.ndarray:
+    """Map segment clusters to variance-ordered day labels (same rule as ``assign_clusters``)."""
+    cp = vc.changepoints.copy()
+    cp[:0] = [0]
+
+    var: dict[int, list[float]] = {}
+    for seg_idx, cluster in clusters_assign.items():
+        var.setdefault(cluster, []).append(float(np.var(train_series[cp[seg_idx] : cp[seg_idx + 1]])))
+    mean_var = {cluster: float(np.mean(values)) for cluster, values in var.items()}
+    conversion_dict = {raw: ordered for ordered, raw in enumerate(sorted(mean_var, key=mean_var.get))}
+
+    vc.clusters = clusters_assign
+    vc.conversion_dict = conversion_dict
+    labels = np.ones(len(train_series), dtype=float)
+    for seg_idx, cluster in clusters_assign.items():
+        labels[cp[seg_idx] : cp[seg_idx + 1]] = conversion_dict[cluster]
+    vc.regime_labels = labels
+    return labels
+
+
+def _assign_spectral(vc: Any, train_series: np.ndarray, n_regimes: int) -> np.ndarray:
     with contextlib.redirect_stdout(io.StringIO()):
         os.environ["TQDM_DISABLE"] = "1"
         try:
             vc.assign_clusters(max_clusters=n_regimes)
         finally:
             os.environ.pop("TQDM_DISABLE", None)
-    return vc, np.asarray(vc.regime_labels, dtype=float)
+    return np.asarray(vc.regime_labels, dtype=float)
+
+
+def _assign_kmeans(vc: Any, train_series: np.ndarray, n_regimes: int, seed: int) -> np.ndarray:
+    """Force ``n_regimes`` segment clusters via k-means on the rotated spectral embedding."""
+    from sklearn.cluster import KMeans
+
+    from hmmgan.evaluation._functions import affinity_to_lap_to_eig, get_rotation_matrix
+
+    _, eigvecs = affinity_to_lap_to_eig(vc.attr)
+    embedding = eigvecs[:, -n_regimes:]
+    _, rotation = get_rotation_matrix(embedding, n_regimes)
+    rotated = embedding.dot(rotation)
+    n_segments = rotated.shape[0]
+    segment_clusters = KMeans(
+        n_clusters=n_regimes, n_init=50, random_state=seed
+    ).fit_predict(rotated)
+    clusters_assign = {seg_idx: int(segment_clusters[seg_idx]) for seg_idx in range(n_segments)}
+    return _finalize_cluster_assignment(vc, train_series, clusters_assign)
+
+
+def _run_vol_regime(
+    train_series: np.ndarray,
+    penalty: int,
+    n_regimes: int,
+    cfg: dict[str, Any],
+    method: str,
+) -> tuple[Any, np.ndarray]:
+    vc = _prepare_vol_regime(train_series, penalty)
+    seed = int(cfg["regimes"].get("clustering_seed", 0))
+    if method == "spectral":
+        labels = _assign_spectral(vc, train_series, n_regimes)
+    elif method == "kmeans":
+        labels = _assign_kmeans(vc, train_series, n_regimes, seed=seed)
+    else:
+        raise ValueError(f"Unknown clustering method {method!r}")
+    return vc, labels
 
 
 def _labels_ok(
@@ -103,33 +164,38 @@ def _labels_ok(
 def fit_regimes(train_series: np.ndarray, cfg: dict[str, Any]) -> RegimeLabels:
     """Run the full ``Vol_Regime`` pipeline on the training series.
 
-    Mirrors notebook cell 6, but sweeps changepoint penalties when the configured value yields
-    fewer than ``n_regimes`` on the current platform. The reference algorithm is unchanged; only
-    the PELT penalty varies.
+    Tries changepoint penalties and, when needed, k-means on the rotated spectral embedding.
+    Spectral clustering matches the reference notebook; k-means is a fallback for platforms where
+    the self-tuning search under-selects or leaves a regime out of the inner training slice.
     """
     n_regimes = int(cfg["regimes"]["n_regimes"])
     attempts: list[dict[str, Any]] = []
     chosen_penalty: int | None = None
+    chosen_method: str | None = None
     vc = None
     labels: np.ndarray | None = None
 
     for penalty in _penalty_candidates(cfg):
-        vc, labels = _run_vol_regime(train_series, penalty, n_regimes)
-        ok, info = _labels_ok(train_series, labels, n_regimes, cfg)
-        attempts.append({"penalty": penalty, "ok": ok, **info})
-        if ok:
-            chosen_penalty = penalty
+        for method in ("spectral", "kmeans"):
+            vc, labels = _run_vol_regime(train_series, penalty, n_regimes, cfg, method=method)
+            ok, info = _labels_ok(train_series, labels, n_regimes, cfg)
+            attempts.append({"penalty": penalty, "method": method, "ok": ok, **info})
+            if ok:
+                chosen_penalty = penalty
+                chosen_method = method
+                break
+        if chosen_penalty is not None:
             break
 
-    if chosen_penalty is None or vc is None or labels is None:
+    if chosen_penalty is None or chosen_method is None or vc is None or labels is None:
         lines = [
-            "Could not find a changepoint penalty that yields "
+            "Could not find a changepoint penalty / clustering method that yields "
             f"{n_regimes} variance-ordered regimes with all regimes in the inner training slice.",
             "Tried:",
         ]
         for row in attempts:
             lines.append(
-                f"  pen={row['penalty']:>2}: found={row['n_regimes_found']} "
+                f"  pen={row['penalty']:>2} {row['method']:<8} found={row['n_regimes_found']} "
                 f"monotone={row['variance_monotone']} "
                 f"inner_train={row['inner_train_counts']}"
             )
@@ -138,13 +204,17 @@ def fit_regimes(train_series: np.ndarray, cfg: dict[str, Any]) -> RegimeLabels:
         )
         raise SystemExit("\n".join(lines))
 
-    if chosen_penalty != int(cfg["regimes"]["changepoint_penalty"]):
+    configured_pen = int(cfg["regimes"]["changepoint_penalty"])
+    if chosen_penalty != configured_pen or chosen_method != "spectral":
         print(
-            f"[WARN] configured penalty {cfg['regimes']['changepoint_penalty']} did not yield "
-            f"{n_regimes} usable regimes on this platform; using penalty {chosen_penalty} instead."
+            f"[WARN] configured spectral penalty {configured_pen} did not yield {n_regimes} usable "
+            f"regimes on this platform; using penalty {chosen_penalty} with {chosen_method} "
+            "clustering instead."
         )
 
-    metadata = _build_metadata(train_series, labels, vc, cfg, chosen_penalty=chosen_penalty)
+    metadata = _build_metadata(
+        train_series, labels, vc, cfg, chosen_penalty=chosen_penalty, chosen_method=chosen_method
+    )
     metadata["penalty_attempts"] = attempts
     return RegimeLabels(
         labels=labels,
@@ -157,7 +227,12 @@ def fit_regimes(train_series: np.ndarray, cfg: dict[str, Any]) -> RegimeLabels:
 
 
 def _build_metadata(
-    series: np.ndarray, labels: np.ndarray, vc: Any, cfg: dict[str, Any], chosen_penalty: int
+    series: np.ndarray,
+    labels: np.ndarray,
+    vc: Any,
+    cfg: dict[str, Any],
+    chosen_penalty: int,
+    chosen_method: str,
 ) -> dict[str, Any]:
     found = int(labels.max()) + 1
     variances = [float(np.var(series[labels == k])) for k in range(found)]
@@ -169,6 +244,7 @@ def _build_metadata(
         "n_changepoints": int(len(vc.changepoints)),
         "changepoint_penalty": chosen_penalty,
         "changepoint_penalty_configured": int(cfg["regimes"]["changepoint_penalty"]),
+        "clustering_method": chosen_method,
         "regime_counts": counts,
         "regime_variances": variances,
         "variance_monotone": bool(all(np.diff(variances) > 0)),
