@@ -54,6 +54,46 @@ def build_synthetic_price_frame(
     return frame
 
 
+def build_uncond_synth_price_frame(
+    windows: np.ndarray,
+    *,
+    start_price: float,
+    price_col: str = "A001",
+    asset_idx: int = 0,
+    separate_windows: bool = True,
+) -> pd.DataFrame:
+    """Integrate regime-free diffusion windows into a price series for the vol forest.
+
+    ``windows`` is ``(n_windows, seq_len, n_assets)`` raw log returns. Each window is
+    independent, so a NaN row is inserted between windows when ``separate_windows``
+    is true. Rolling TA features then do not cross window boundaries. There is no
+    calendar alignment with the real benchmark.
+    """
+    arr = np.asarray(windows, dtype=float)
+    if arr.ndim == 2:
+        log_ret = arr
+    elif arr.ndim == 3:
+        log_ret = arr[:, :, int(asset_idx)]
+    else:
+        raise ValueError(f"windows must be 2D or 3D, got {arr.shape}")
+    if log_ret.size == 0:
+        raise ValueError("windows is empty")
+    if start_price <= 0:
+        raise ValueError("start_price must be positive")
+
+    log_col = f"{price_col}_log"
+    log_start = float(np.log(start_price))
+    chunks: list[pd.DataFrame] = []
+    n_windows = int(log_ret.shape[0])
+    for i in range(n_windows):
+        log_price = log_start + np.cumsum(log_ret[i])
+        price = np.maximum(np.exp(log_price), 1e-8)
+        chunks.append(pd.DataFrame({price_col: price, log_col: np.log(price)}))
+        if separate_windows and i < n_windows - 1:
+            chunks.append(pd.DataFrame({price_col: [np.nan], log_col: [np.nan]}))
+    return pd.concat(chunks, ignore_index=True)
+
+
 def z_returns_to_log_returns(stitched_z_returns: np.ndarray, returns: pd.DataFrame) -> np.ndarray:
     """Map HMM emission units back to raw A001 log returns."""
     mu, sd = a001_log_return_scale(returns)

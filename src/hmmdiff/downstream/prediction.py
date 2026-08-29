@@ -5,7 +5,6 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import ta
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
@@ -72,8 +71,19 @@ def train_model_and_evaluate(real_data, synthetic_data=None, window=5, target="r
         print(f"Test MSE: {mean_squared_error(yr_test, preds_comb):.6f},  R^2: {r2_score(yr_test, preds_comb):.3f}")
 
 
-def _build_advanced_vol_features(df, price_col, intraday=False, horizon=21):
-    """Build vol/TA features and a forward volatility target."""
+VOL_FEATURE_COLS = ("Volatility", "MA_21", "RSI", "MACD")
+VOL_TARGET_COL = "Future_Volatility"
+
+
+def build_advanced_vol_features(df, price_col, intraday=False, horizon=21):
+    """Build vol/TA features and a forward volatility target.
+
+    Features are dated at observation time ``t``. ``Future_Volatility`` is the
+    21-day realized vol ``horizon`` trading days later; ``target_date`` is that
+    later calendar date.
+    """
+    import ta
+
     frame = df.copy().sort_index()
     frame["Returns"] = frame[price_col].pct_change()
     if not intraday:
@@ -87,9 +97,14 @@ def _build_advanced_vol_features(df, price_col, intraday=False, horizon=21):
     frame["MA_21"] = frame[price_col].rolling(window=21).mean()
     frame["RSI"] = ta.momentum.RSIIndicator(frame[price_col], window=14).rsi()
     frame["MACD"] = ta.trend.MACD(frame[price_col]).macd_diff()
-    frame["Future_Volatility"] = frame["Volatility"].shift(-horizon)
+    target_dates = pd.Series(frame.index, index=frame.index).shift(-int(horizon))
+    frame[VOL_TARGET_COL] = frame["Volatility"].shift(-int(horizon))
+    frame["target_date"] = target_dates
     frame.dropna(inplace=True)
     return frame
+
+
+_build_advanced_vol_features = build_advanced_vol_features
 
 
 def train_model_and_evaluate_advanced_volatility(
@@ -103,9 +118,9 @@ def train_model_and_evaluate_advanced_volatility(
     real_feat = _build_advanced_vol_features(
         df_real, price_col=price_col, intraday=is_intraday, horizon=horizon
     )
-    feature_cols = ["Volatility", "MA_21", "RSI", "MACD"]
+    feature_cols = list(VOL_FEATURE_COLS)
     x_real = real_feat[feature_cols].values
-    y_real = real_feat["Future_Volatility"].values
+    y_real = real_feat[VOL_TARGET_COL].values
 
     split_idx = int(0.8 * len(x_real))
     xr_train, yr_train = x_real[:split_idx], y_real[:split_idx]
@@ -136,7 +151,7 @@ def train_model_and_evaluate_advanced_volatility(
             df_synth, price_col=price_col, intraday=is_intraday, horizon=horizon
         )
         x_synth = synth_feat[feature_cols].values
-        y_synth = synth_feat["Future_Volatility"].values
+        y_synth = synth_feat[VOL_TARGET_COL].values
         train_and_report_scenario(x_synth, y_synth, xr_test, yr_test, "Train on Synthetic Only")
         xc_train = np.concatenate([xr_train, x_synth], axis=0)
         yc_train = np.concatenate([yr_train, y_synth], axis=0)
@@ -153,14 +168,15 @@ def train_model_and_evaluate_advanced_volatility_mixture(
     mix_grid=None,
     random_state=42,
     plot_summary=True,
+    synth_source: str | None = None,
 ):
     """Sweep synthetic share in training; evaluate on the same real test set."""
     feat_real = _build_advanced_vol_features(
         df_real, price_col=price_col, intraday=is_intraday, horizon=horizon
     )
-    feature_cols = ["Volatility", "MA_21", "RSI", "MACD"]
+    feature_cols = list(VOL_FEATURE_COLS)
     x_real_all = feat_real[feature_cols].values
-    y_real_all = feat_real["Future_Volatility"].values
+    y_real_all = feat_real[VOL_TARGET_COL].values
 
     split_idx = int(0.8 * len(x_real_all))
     xr_train, yr_train = x_real_all[:split_idx], y_real_all[:split_idx]
@@ -171,7 +187,7 @@ def train_model_and_evaluate_advanced_volatility_mixture(
             df_synth, price_col=price_col, intraday=is_intraday, horizon=horizon
         )
         x_synth_all = feat_synth[feature_cols].values
-        y_synth_all = feat_synth["Future_Volatility"].values
+        y_synth_all = feat_synth[VOL_TARGET_COL].values
     else:
         x_synth_all = np.empty((0, len(feature_cols)))
         y_synth_all = np.empty(0)
@@ -249,7 +265,10 @@ def train_model_and_evaluate_advanced_volatility_mixture(
         ax2.tick_params(axis="y", labelcolor=color_r2)
 
         title_h = f"{horizon}-min" if is_intraday else f"{horizon}-day"
-        plt.title(f"Effect of Synthetic Share on Volatility Forecast ({title_h})")
+        title = f"Effect of Synthetic Share on Volatility Forecast ({title_h})"
+        if synth_source:
+            title = f"{title}\n[{synth_source}]"
+        plt.title(title)
         fig.tight_layout()
         plt.show()
 

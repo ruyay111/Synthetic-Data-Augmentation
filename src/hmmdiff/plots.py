@@ -64,6 +64,170 @@ def plot_estimates(
     plt.show()
 
 
+def plot_regime_paths(
+    series: dict[str, np.ndarray],
+    title: str,
+    figsize: tuple[int, int] = (12, 6),
+    jiggle: float = 0.12,
+) -> None:
+    """Step-plot of multiple daily regime series (validation overlay).
+
+    ``jiggle`` offsets each line vertically so overlapping integer paths stay visible.
+    Tick labels remain the integer regimes.
+    """
+    names = list(series)
+    n_series = len(names)
+    offsets = np.linspace(-jiggle, jiggle, n_series) if n_series > 1 else np.zeros(1)
+    ymax = 0.0
+    plt.figure(figsize=figsize)
+    for offset, name in zip(offsets, names):
+        values = np.asarray(series[name], dtype=float)
+        finite = values[np.isfinite(values)]
+        if finite.size:
+            ymax = max(ymax, float(finite.max()))
+        plt.plot(values + offset, drawstyle="steps-post", label=name)
+    plt.legend()
+    plt.title(title)
+    plt.ylabel("regime")
+    plt.xlabel("validation day")
+    plt.yticks(np.arange(0, int(np.floor(ymax)) + 1))
+    plt.ylim(-0.35 - jiggle, ymax + 0.35 + jiggle)
+    plt.show()
+
+
+MVO_METHOD_PALETTE = {
+    "hmm-diffusion": "#ff7f0e",
+    "mixed": "#1f77b4",
+}
+MVO_HUE_ORDER = ("hmm-diffusion", "mixed")
+MVO_BUCKET_ORDER = ("high vol", "low vol")
+
+
+def _mvo_orders(frame: pd.DataFrame) -> tuple[list[str], list[str]]:
+    hue_order = [m for m in MVO_HUE_ORDER if m in set(frame["method"])]
+    col_order = [b for b in MVO_BUCKET_ORDER if b in set(frame["bucket"])]
+    if not col_order:
+        col_order = sorted(frame["bucket"].dropna().unique().tolist())
+    return hue_order, col_order
+
+
+def _default_mvo_title(metric: str, mean: bool) -> str:
+    label = str(metric).replace("_", " ").capitalize()
+    prefix = f"Mean {label}" if mean else label
+    return f"{prefix} by n extra synth windows"
+
+
+def _apply_mvo_title(
+    fig,
+    title: str,
+    *,
+    objective: str | None = None,
+    constraint: str | None = None,
+) -> None:
+    tags = []
+    if objective:
+        tags.append(f"[objective: {objective}]")
+    if constraint:
+        tags.append(f"[constraints: {constraint}]")
+    if not tags:
+        fig.suptitle(title, y=1.03)
+        return
+    fig.subplots_adjust(top=0.80)
+    fig.suptitle(title, y=0.98, fontsize=13)
+    fig.text(
+        0.5,
+        0.905,
+        "  ".join(tags),
+        ha="center",
+        va="top",
+        fontsize=11,
+        color="0.25",
+    )
+
+
+def plot_mvo_boxes(
+    windows: pd.DataFrame,
+    metric: str,
+    title: str | None = None,
+    *,
+    objective: str | None = None,
+    constraint: str | None = None,
+) -> None:
+    """Boxplots of a window metric by mix count, method, and high/low vol."""
+    import seaborn as sns
+
+    frame = windows.dropna(subset=[metric]).copy()
+    if frame.empty:
+        return
+    hue_order, col_order = _mvo_orders(frame)
+    grid = sns.catplot(
+        data=frame,
+        x="n_synth",
+        y=metric,
+        hue="method",
+        hue_order=hue_order,
+        col="bucket",
+        col_order=col_order,
+        kind="box",
+        palette=MVO_METHOD_PALETTE,
+        sharey=True,
+        height=4.2,
+        aspect=1.15,
+    )
+    _apply_mvo_title(
+        grid.fig,
+        title or _default_mvo_title(metric, mean=False),
+        objective=objective,
+        constraint=constraint,
+    )
+    grid.set_axis_labels("n synth", metric)
+    plt.show()
+
+
+def plot_mvo_means(
+    windows: pd.DataFrame,
+    metric: str,
+    title: str | None = None,
+    *,
+    objective: str | None = None,
+    constraint: str | None = None,
+) -> None:
+    """Mean lines of a window metric by mix count, method, and high/low vol."""
+    import seaborn as sns
+
+    frame = windows.dropna(subset=[metric]).copy()
+    if frame.empty:
+        return
+    hue_order, col_order = _mvo_orders(frame)
+    means = (
+        frame.groupby(["bucket", "method", "n_synth"], as_index=False)[metric]
+        .mean()
+        .sort_values("n_synth")
+    )
+    grid = sns.relplot(
+        data=means,
+        x="n_synth",
+        y=metric,
+        hue="method",
+        hue_order=hue_order,
+        col="bucket",
+        col_order=col_order,
+        kind="line",
+        marker="o",
+        palette=MVO_METHOD_PALETTE,
+        height=4.2,
+        aspect=1.15,
+    )
+    _apply_mvo_title(
+        grid.fig,
+        title or _default_mvo_title(metric, mean=True),
+        objective=objective,
+        constraint=constraint,
+    )
+    grid.set_axis_labels("n synth", f"mean {metric}")
+    plt.show()
+
+
 def plot_real_vs_generated(
     real_returns: np.ndarray,
     real_regimes: np.ndarray | None,
