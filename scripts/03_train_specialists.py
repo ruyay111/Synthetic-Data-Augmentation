@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Stage 3: train one unconditional UniTST_MP diffusion specialist per volatility regime.
 
+Windows come from stage 2 (A001 labels on the 2001–2022 10-asset overlap). Retrain after relabeling.
 Windows-friendly counterpart of ``03_train_specialists.sh``. Calls ``reference_model/diffusion/run.py``
 with the same flags. Absolute paths are required because ``run.py`` chdirs to its own directory.
 

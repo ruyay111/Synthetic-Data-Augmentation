@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Stage 4: sample a pool of synthetic windows from each trained specialist.
 
-Univariate adaptation of ``generate_specialist_pools.py`` from the ruya tree. Writes
+Pools follow the A001 2001–2022 specialists from stages 1–3. Univariate adaptation of
+``generate_specialist_pools.py`` from the ruya tree. Writes
 
   data/pools/regime_k{k}/windows.npy   (n_pool, seq_len, n_channels) in raw log-return units
   data/pools/regime_k{k}/meta.json

@@ -13,10 +13,15 @@ paths:
   test_results: test_results
 
 data:
-  # Notebook cell 4-5. `skip_rows` drops pre-1988-01-19 rows, which are stale in the source file.
+  # `skip_rows` drops pre-1988-01-19 rows, which are stale in the source file. The HMM/diffusion
+  # calendar is then cropped to match the 10-asset overlap used by the EW notebooks.
   date_column: as_of
   price_column: A001
   skip_rows: 2100
+  start_date: '2001-01-01'
+  end_date: '2022-08-31'
+  train_end_date: '2014-01-03'
+  test_start_date: '2014-01-06'
   # Ten-asset panel for diffusion specialists (ruya convention). Regime labels still come from A001
   # alone in stage 1; stage 2 attaches these columns to each A001-labelled window.
   asset_columns:
@@ -30,7 +35,7 @@ data:
     - A013
     - A014
     - A015
-  # Fractions applied in sequence: outer split on the full return series, then inner split on train.
+  # Unused when train_end_date is set. Fallback only if that date is removed.
   train_fraction: 0.75
   train_val_fraction: 0.75
 
@@ -38,7 +43,7 @@ regimes:
   n_regimes: 5
   # Vol_Regime.get_changepoints PELT penalty. Lower values cut more segments, which lets k-means
   # assign some post-2001 low-vol stretches to regime 0 (needed for 128-day diffusion windows).
-  # 18 + kmeans keeps five variance-ordered regimes in the inner training slice and raises the
+  # 18 + kmeans keeps five variance-ordered regimes in the 2001–2014 HMM train slice and raises the
   # thinnest ten-asset-overlap window count from 3 (pen=22) to 136. Spectral clustering still
   # under-selects on current libraries; see README.md.
   changepoint_penalty: 18
@@ -46,7 +51,7 @@ regimes:
   clustering_method: kmeans
   # If the configured penalty yields fewer than n_regimes on a given platform (common on Windows
   # even with the same requirements.txt), stage 1 tries these in order until five variance-ordered
-  # regimes are found with all five present in the inner training slice.
+  # regimes are found with all five present in the 2001–2014 HMM train slice.
   changepoint_penalty_fallback:
     - 18
     - 10
@@ -108,21 +113,18 @@ hmm:
   # Semi-supervised HMM: fraction of the train slice that keeps its labels.
   semi_supervised_fraction: 0.5
 
-# Expected values from the reference notebook. Script 01 asserts these.
-# Dates are of the *return* series: prices start 1988-01-19, and the leading row is consumed by
-# .diff().dropna(), so the first return is dated 1988-01-20.
+# Expected values after cropping A001 to the 10-asset overlap. Script 01 asserts the counts and dates.
+# There is no validation slice: HMM trains on 2001–2014 and evaluates on 2014–2022.
 reference:
-  n_returns: 9031
-  n_train: 6773
+  n_returns: 5653
+  n_train: 3395
   n_test: 2258
-  n_train_inner: 5079
-  n_val: 1694
-  price_start_date: '1988-01-19'
-  start_date: '1988-01-20'
+  start_date: '2001-01-01'
+  train_end_date: '2014-01-03'
+  test_start_date: '2014-01-06'
   end_date: '2022-08-31'
-  # State-estimation accuracies reported by the reference notebook, as fractions. These depend on the
-  # regime labels, which we cannot reproduce bit-for-bit (see README.md), so treat them as the
-  # benchmark the pipeline should land near rather than as assertions.
+  # Historical train/val accuracies from the 1988–2014 inner-split notebook. Not asserted after the
+  # 2001 calendar change; treat as a prior benchmark, not as current targets.
   accuracy:
     supervised: {train: 0.8228, train_top2: 0.9890, val: 0.6848, val_top2: 0.9587}
     markov_switching: {train: 0.8200, train_top2: 0.9892, val: 0.6860, val_top2: 0.9522}

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Stage 1: preprocess returns and label volatility regimes.
 
-Covers cells 4-10 of ``Supervised HMMs.ipynb``. Writes two artifacts:
+Clusters Vol_Regime on A001 from 2001-01-01 to 2022-08-31. The HMM later trains only on 2001–2014;
+all five regimes must appear in that train slice. Writes
 
   data/processed/sp500tr_returns.parquet   z-scored log returns tagged with split membership
-  data/processed/regime_labels.npz         Vol_Regime output for the training series
+  data/processed/regime_labels.npz         Vol_Regime output for the full cropped series
 
 Both are inputs to every later stage. The label file is treated as immutable once the specialists are
 trained against it, so the script refuses to overwrite an existing cache without ``--force``.
@@ -17,12 +18,10 @@ import json
 import sys
 from pathlib import Path
 
-import numpy as np
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from hmmdiff.config import bootstrap_imports, config_path, load_config  # noqa: E402
-from hmmdiff.data import build_returns, compute_splits, save_returns, train_returns  # noqa: E402
+from hmmdiff.data import build_returns, save_returns, split_counts  # noqa: E402
 from hmmdiff.regimes import fit_regimes, load_labels, save_labels  # noqa: E402
 
 
@@ -37,32 +36,31 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def check_preprocessing(returns, cfg) -> None:
-    """Validation checkpoint 1: the splits must match the reference notebook exactly."""
+def check_preprocessing(returns, cfg) -> dict:
+    """Validation checkpoint 1: the splits must match the configured calendar."""
     expected = cfg["reference"]
-    splits = compute_splits(len(returns), cfg)
-    actual = {
-        "n_returns": len(returns),
-        "n_train": splits.n_train,
-        "n_test": splits.n_test,
-        "n_train_inner": splits.n_train_inner,
-        "n_val": splits.n_val,
-        "start_date": returns["date"].iloc[0],
-        "end_date": returns["date"].iloc[-1],
-    }
-    mismatches = {k: (v, expected[k]) for k, v in actual.items() if v != expected[k]}
+    actual = split_counts(returns)
+    keys = [
+        "n_returns",
+        "n_train",
+        "n_test",
+        "start_date",
+        "train_end_date",
+        "test_start_date",
+        "end_date",
+    ]
+    mismatches = {k: (actual[k], expected[k]) for k in keys if actual[k] != expected[k]}
     if mismatches:
         lines = [f"  {k}: got {got!r}, reference has {want!r}" for k, (got, want) in mismatches.items()]
-        raise SystemExit(
-            "Preprocessing does not match the reference notebook:\n" + "\n".join(lines)
-        )
-    print("[OK] preprocessing matches the reference")
-    for key, value in actual.items():
-        print(f"       {key}: {value}")
+        raise SystemExit("Preprocessing does not match configs/default.yaml:\n" + "\n".join(lines))
+    print("[OK] preprocessing matches the 2001–2022 A001 calendar")
+    for key in keys:
+        print(f"       {key}: {actual[key]}")
+    return actual
 
 
-def check_labels(regimes, cfg) -> None:
-    """Validation checkpoint 2: regime count and variance ordering."""
+def check_labels(regimes, cfg, n_train: int) -> None:
+    """Validation checkpoint 2: regime count, variance ordering, and train-slice coverage."""
     meta = regimes.metadata
     n_expected = cfg["regimes"]["n_regimes"]
     if meta["n_regimes_found"] != n_expected:
@@ -77,12 +75,20 @@ def check_labels(regimes, cfg) -> None:
             "Regime variances are not increasing in the label index, so regime 0 is not the "
             f"lowest-volatility state: {meta['regime_variances']}"
         )
-    print(f"[OK] {meta['n_regimes_found']} regimes, variance increasing in label index")
+    train_counts = [
+        int((regimes.labels[:n_train] == k).sum()) for k in range(n_expected)
+    ]
+    if any(count == 0 for count in train_counts):
+        raise SystemExit(
+            f"A regime is missing from the 2001–2014 HMM train slice: {train_counts}"
+        )
+    print(f"[OK] {meta['n_regimes_found']} regimes on {meta['n_days']} days (2001–2022)")
     print(f"       clustering: {meta.get('clustering_method', '?')}  penalty: {meta.get('changepoint_penalty')}")
     print(f"       changepoints: {meta['n_changepoints']}")
     for k, (count, var) in enumerate(zip(meta["regime_counts"], meta["regime_variances"])):
         share = 100 * count / meta["n_days"]
         print(f"       regime {k}: {count:>5} days ({share:>5.1f}%)  variance {var:.4f}")
+    print(f"       train-slice counts (2001–2014): {train_counts}")
     print(f"       average regime length: {json.dumps(meta['average_regime_length'])}")
 
 
@@ -96,7 +102,7 @@ def main() -> int:
 
     print(f"[1/2] preprocessing {config_path(cfg, 'raw_csv')}")
     returns = build_returns(cfg)
-    check_preprocessing(returns, cfg)
+    actual = check_preprocessing(returns, cfg)
     save_returns(returns, returns_path)
     print(f"[OK] wrote {returns_path}")
 
@@ -115,10 +121,14 @@ def main() -> int:
         )
         return 0
 
-    series = train_returns(returns)
-    print(f"[2/2] labeling regimes on {len(series)} training days (this takes a few minutes)")
-    regimes = fit_regimes(series, cfg)
-    check_labels(regimes, cfg)
+    series = returns["z_return"].to_numpy(dtype=float)
+    n_train = actual["n_train"]
+    print(
+        f"[2/2] labeling regimes on {len(series)} days "
+        f"(HMM coverage slice is first {n_train} train days)"
+    )
+    regimes = fit_regimes(series, cfg, coverage_end=n_train)
+    check_labels(regimes, cfg, n_train)
     save_labels(regimes, labels_path)
     print(f"[OK] wrote {labels_path}")
     return 0

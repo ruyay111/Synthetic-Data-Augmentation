@@ -12,7 +12,15 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
 from hmmdiff.config import load_config
-from hmmdiff.data import build_model_frames, build_returns, compute_splits, train_returns
+from hmmdiff.data import (
+    align_diffusion_panel,
+    build_model_frames,
+    build_returns,
+    compute_splits,
+    split_counts as a001_split_counts,
+    splits_from_returns,
+    train_returns,
+)
 from hmmdiff.ew import (
     align_ew_diffusion_panel,
     build_ew_returns,
@@ -94,17 +102,50 @@ class EWReturnsTests(unittest.TestCase):
         emission = emission_from_log_panel(panel, scale)
         np.testing.assert_allclose(emission, self.returns["z_return"].to_numpy())
 
-    def test_a001_pipeline_helpers_are_unchanged(self):
+    def test_a001_calendar_matches_ew_holdout(self):
         a001_cfg = load_config()
         returns = build_returns(a001_cfg)
-        splits = compute_splits(len(returns), a001_cfg)
-        self.assertEqual(splits.n_train, a001_cfg["reference"]["n_train"])
-        self.assertEqual(splits.n_train_inner, a001_cfg["reference"]["n_train_inner"])
+        actual = a001_split_counts(returns)
+        expected = a001_cfg["reference"]
+        for key in (
+            "n_returns",
+            "n_train",
+            "n_test",
+            "start_date",
+            "train_end_date",
+            "test_start_date",
+            "end_date",
+        ):
+            self.assertEqual(actual[key], expected[key], key)
+
+        splits = splits_from_returns(returns, a001_cfg)
+        self.assertEqual(splits.n_train, expected["n_train"])
+        self.assertEqual(splits.n_test, expected["n_test"])
+        self.assertEqual(splits.n_val, 0)
+        self.assertEqual(splits.n_train_inner, splits.n_train)
         self.assertEqual(len(train_returns(returns)), splits.n_train)
-        dummy = np.zeros(splits.n_train, dtype=int)
-        train_data, val_data = build_model_frames(returns, dummy, a001_cfg)
-        self.assertEqual(len(train_data), splits.n_train_inner)
-        self.assertEqual(len(val_data), splits.n_val)
+
+        dummy = np.arange(len(returns), dtype=int) % 5
+        train_data, test_data = build_model_frames(returns, dummy, a001_cfg)
+        self.assertEqual(len(train_data), splits.n_train)
+        self.assertEqual(len(test_data), splits.n_test)
+
+        panel, labels, dates = align_diffusion_panel(returns, dummy, a001_cfg)
+        self.assertEqual(len(panel), actual["n_returns"])
+        self.assertEqual(str(dates[0].date()), actual["start_date"])
+        self.assertEqual(str(dates[-1].date()), actual["end_date"])
+
+        with self.assertRaises(ValueError):
+            compute_splits(len(returns), a001_cfg)
+
+    def test_ew_still_maps_from_uncropped_a001_fractions(self):
+        """EW yaml has no start_date, so A001 mapping still uses the 1988 series and 75% cut."""
+        ew_cfg = self.cfg
+        a001_for_ew = build_returns(ew_cfg)
+        self.assertEqual(a001_for_ew["date"].iloc[0], "1988-01-20")
+        self.assertGreater(len(a001_for_ew), self.cfg["reference"]["n_returns"])
+        self.assertEqual(a001_split_counts(a001_for_ew)["train_end_date"], "2014-01-03")
+        self.assertEqual(a001_split_counts(a001_for_ew)["test_start_date"], "2014-01-06")
 
 
 if __name__ == "__main__":

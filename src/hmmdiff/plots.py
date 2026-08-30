@@ -101,6 +101,9 @@ MVO_METHOD_PALETTE = {
 }
 MVO_HUE_ORDER = ("hmm-diffusion", "mixed")
 MVO_BUCKET_ORDER = ("high vol", "low vol")
+MVO_SYNTH_PCT_MIN = 0
+MVO_SYNTH_PCT_MAX = 90
+MVO_SYNTH_PCT_STEP = 10
 
 
 def _mvo_orders(frame: pd.DataFrame) -> tuple[list[str], list[str]]:
@@ -111,10 +114,58 @@ def _mvo_orders(frame: pd.DataFrame) -> tuple[list[str], list[str]]:
     return hue_order, col_order
 
 
+def _show_all_y_tick_labels(grid, ylabel: str | None = None) -> None:
+    """Show y tick numbers and the y-axis label on every facet."""
+    grid.tick_params(axis="y", labelleft=True)
+    for ax in grid.axes.flat:
+        ax.tick_params(axis="y", which="both", labelleft=True)
+        if ylabel:
+            ax.set_ylabel(ylabel)
+        ax.yaxis.get_label().set_visible(True)
+
+
+def _ylim_from_values(values: np.ndarray, pad: float = 0.08) -> tuple[float, float]:
+    """Axis limits that cover ``values`` with a small margin."""
+    finite = np.asarray(values, dtype=float)
+    finite = finite[np.isfinite(finite)]
+    if finite.size == 0:
+        return -1.0, 1.0
+    lo = float(finite.min())
+    hi = float(finite.max())
+    if lo == hi:
+        span = max(abs(lo), 1.0) * 0.1
+        return lo - span, hi + span
+    margin = pad * (hi - lo)
+    return lo - margin, hi + margin
+
+
+def _set_per_bucket_ylim(grid, frame: pd.DataFrame, metric: str, col_order: list[str]) -> None:
+    """Each high/low vol panel uses that bucket's own value range."""
+    for ax, bucket in zip(np.ravel(grid.axes), col_order):
+        subset = frame.loc[frame["bucket"] == bucket, metric]
+        ax.set_ylim(*_ylim_from_values(subset.to_numpy()))
+
+
 def _default_mvo_title(metric: str, mean: bool) -> str:
     label = str(metric).replace("_", " ").capitalize()
     prefix = f"Mean {label}" if mean else label
-    return f"{prefix} by n extra synth windows"
+    return f"{prefix} by % of synth"
+
+
+def _mvo_synth_pct_frame(windows: pd.DataFrame, metric: str) -> pd.DataFrame:
+    """Keep 0%, 10%, …, 90% mix points. Use stored ``synth_pct`` when present."""
+    frame = windows.dropna(subset=[metric]).copy()
+    if frame.empty:
+        return frame
+    if "synth_pct" not in frame.columns:
+        if "n_synth" not in frame.columns:
+            return frame
+        frame["synth_pct"] = frame["n_synth"].astype(float) * MVO_SYNTH_PCT_STEP
+    frame["synth_pct"] = np.round(frame["synth_pct"].astype(float)).astype(int)
+    return frame.loc[
+        (frame["synth_pct"] >= MVO_SYNTH_PCT_MIN)
+        & (frame["synth_pct"] <= MVO_SYNTH_PCT_MAX)
+    ].copy()
 
 
 def _apply_mvo_title(
@@ -153,24 +204,26 @@ def plot_mvo_boxes(
     objective: str | None = None,
     constraint: str | None = None,
 ) -> None:
-    """Boxplots of a window metric by mix count, method, and high/low vol."""
+    """Boxplots of a window metric by mix percent, method, and high/low vol."""
     import seaborn as sns
 
-    frame = windows.dropna(subset=[metric]).copy()
+    frame = _mvo_synth_pct_frame(windows, metric)
     if frame.empty:
         return
     hue_order, col_order = _mvo_orders(frame)
+    pct_order = sorted(frame["synth_pct"].unique().tolist())
     grid = sns.catplot(
         data=frame,
-        x="n_synth",
+        x="synth_pct",
         y=metric,
         hue="method",
         hue_order=hue_order,
         col="bucket",
         col_order=col_order,
         kind="box",
+        order=pct_order,
         palette=MVO_METHOD_PALETTE,
-        sharey=True,
+        sharey=False,
         height=4.2,
         aspect=1.15,
     )
@@ -180,7 +233,9 @@ def plot_mvo_boxes(
         objective=objective,
         constraint=constraint,
     )
-    grid.set_axis_labels("n synth", metric)
+    grid.set_axis_labels("% of synth", metric)
+    _set_per_bucket_ylim(grid, frame, metric, col_order)
+    _show_all_y_tick_labels(grid, ylabel=metric)
     plt.show()
 
 
@@ -192,21 +247,21 @@ def plot_mvo_means(
     objective: str | None = None,
     constraint: str | None = None,
 ) -> None:
-    """Mean lines of a window metric by mix count, method, and high/low vol."""
+    """Mean lines of a window metric by mix percent, method, and high/low vol."""
     import seaborn as sns
 
-    frame = windows.dropna(subset=[metric]).copy()
+    frame = _mvo_synth_pct_frame(windows, metric)
     if frame.empty:
         return
     hue_order, col_order = _mvo_orders(frame)
     means = (
-        frame.groupby(["bucket", "method", "n_synth"], as_index=False)[metric]
+        frame.groupby(["bucket", "method", "synth_pct"], as_index=False)[metric]
         .mean()
-        .sort_values("n_synth")
+        .sort_values("synth_pct")
     )
     grid = sns.relplot(
         data=means,
-        x="n_synth",
+        x="synth_pct",
         y=metric,
         hue="method",
         hue_order=hue_order,
@@ -215,6 +270,7 @@ def plot_mvo_means(
         kind="line",
         marker="o",
         palette=MVO_METHOD_PALETTE,
+        facet_kws={"sharey": False},
         height=4.2,
         aspect=1.15,
     )
@@ -224,7 +280,12 @@ def plot_mvo_means(
         objective=objective,
         constraint=constraint,
     )
-    grid.set_axis_labels("n synth", f"mean {metric}")
+    grid.set_axis_labels("% of synth", f"mean {metric}")
+    ticks = list(range(MVO_SYNTH_PCT_MIN, MVO_SYNTH_PCT_MAX + 1, MVO_SYNTH_PCT_STEP))
+    for ax in grid.axes.flat:
+        ax.set_xticks(ticks)
+    _set_per_bucket_ylim(grid, means, metric, col_order)
+    _show_all_y_tick_labels(grid, ylabel=f"mean {metric}")
     plt.show()
 
 

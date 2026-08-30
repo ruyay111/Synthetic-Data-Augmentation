@@ -6,9 +6,9 @@ Reads cached A001 regime labels from stage 1, attaches the nine other ruya asset
   data/processed/regime_windows/regime_{k}.npy   (n_windows, seq_len, 10)
   data/processed/regime_windows/manifest.json
 
-Regime labels are not recomputed. They are the A001 labels from stage 1, mapped onto the shorter date
-range where all ten assets have valid prices (2001 onward within the train split). Window values are
-raw log returns; ``Dataset_RegimeWindows`` applies quantile scaling during training.
+Regime labels are not recomputed. Clustering and windows both cover 2001–2022. The HMM still trains
+only on 2001–2014; that split is applied later, not here. Window values are raw log returns;
+``Dataset_RegimeWindows`` applies quantile scaling during training.
 """
 
 from __future__ import annotations
@@ -84,7 +84,7 @@ def main() -> int:
     panel, labels, dates = align_train_diffusion_panel(returns, regimes.labels, cfg)
 
     print(
-        f"building windows from {len(panel)} aligned training days "
+        f"building windows from {len(panel)} aligned days "
         f"({dates[0].date()} to {dates[-1].date()}), "
         f"{panel.shape[1]} assets, seq_len={cfg['diffusion']['seq_len']}"
     )

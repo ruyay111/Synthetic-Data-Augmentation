@@ -10,16 +10,18 @@ import pandas as pd
 from .hmm_forecast import OpenLoopWalk
 from .mixed_sample import sample_uncond_simple_paths
 from .portfolio_core import (
+    MIX_MODES,
     calmar_ratio,
     collapse_weights,
     collapsed_column_means,
     greedy_max_return_box,
     mean_var_weights,
+    mix_train_row_append,
     mix_train_with_regime_paths,
     project_sum_to_one_box,
     sharpe_ratio,
 )
-from .specialist_sample import sample_simple_paths
+from .specialist_sample import sample_simple_paths, sample_simple_rows, synth_rows_for_share
 
 HIGH_VOL_REGIMES = {3, 4}
 METHODS = ("hmm-diffusion", "mixed")
@@ -45,15 +47,31 @@ def _weights_for_hold(
     ridge: float,
     max_weight: float | None,
     objective: str = "mean_variance",
+    mix_mode: str = "column",
 ) -> np.ndarray:
+    if mix_mode not in MIX_MODES:
+        raise ValueError(f"Unknown mix_mode {mix_mode!r}; expected one of {MIX_MODES}")
+    n_assets = real_lookback.shape[1]
+    if mix_mode == "row":
+        mixed, _n_draw = mix_train_row_append(real_lookback, synth_paths)
+        raw = mean_var_weights(mixed, allow_short=allow_short, ridge=ridge, objective=objective)
+        collapsed = collapse_weights(raw, n_assets=n_assets, n_draw=0)
+        if max_weight is None:
+            return collapsed
+        w_min = 0.0 if not allow_short else -float(max_weight)
+        if objective == "max_return":
+            mu10 = mixed.mean(axis=0)
+            return greedy_max_return_box(mu10, w_min=w_min, w_max=float(max_weight))
+        return project_sum_to_one_box(collapsed, w_min=w_min, w_max=float(max_weight))
+
     mixed, n_draw = mix_train_with_regime_paths(real_lookback, synth_paths, mix_len=mix_len)
     raw = mean_var_weights(mixed, allow_short=allow_short, ridge=ridge, objective=objective)
-    collapsed = collapse_weights(raw, n_assets=real_lookback.shape[1], n_draw=n_draw)
+    collapsed = collapse_weights(raw, n_assets=n_assets, n_draw=n_draw)
     if max_weight is None:
         return collapsed
     w_min = 0.0 if not allow_short else -float(max_weight)
     if objective == "max_return":
-        mu10 = collapsed_column_means(mixed, real_lookback.shape[1], n_draw)
+        mu10 = collapsed_column_means(mixed, n_assets, n_draw)
         return greedy_max_return_box(mu10, w_min=w_min, w_max=float(max_weight))
     return project_sum_to_one_box(collapsed, w_min=w_min, w_max=float(max_weight))
 
@@ -105,12 +123,18 @@ def run_mvo_backtest(
     ridge: float = 1e-6,
     max_weight: float | None = None,
     objective: str = "mean_variance",
+    mix_mode: str = "column",
 ) -> MVOBacktestResult:
     """Score non-overlapping holds on a date-indexed 10-asset simple-return panel.
 
     ``true_labels``, ``val_dates``, and ``walk`` share the validation length. Incomplete
-    lookback or hold rows are skipped.
+    lookback or hold rows are skipped. ``mix_mode='column'`` is the original expanded
+    universe; ``mix_mode='row'`` appends synthetic days so the synth **row share**
+    equals each ``mix_grid`` value in percent (0, 10, …, 90). For column mode,
+    ``mix_grid`` is still a count of extra windows.
     """
+    if mix_mode not in MIX_MODES:
+        raise ValueError(f"Unknown mix_mode {mix_mode!r}; expected one of {MIX_MODES}")
     simple = simple.copy()
     simple.index = pd.DatetimeIndex(simple.index)
     labels = np.asarray(true_labels, dtype=int).reshape(-1)
@@ -139,10 +163,28 @@ def run_mvo_backtest(
             seed = _hold_seed(random_state, val_start, n_synth)
             rng_hmm = np.random.default_rng(seed)
             rng_mixed = np.random.default_rng(seed)
-            hmm_paths = sample_simple_paths(
-                specialist_pools[k_star], n_synth, horizon, rng_hmm
-            )
-            mixed_paths = sample_uncond_simple_paths(uncond_windows, n_synth, horizon, rng_mixed)
+            if mix_mode == "row":
+                share = float(n_synth) / 100.0
+                n_rows = synth_rows_for_share(lookback, share)
+                hmm_paths = sample_simple_rows(
+                    specialist_pools[k_star], n_rows, horizon, rng_hmm
+                )
+                mixed_paths = sample_simple_rows(
+                    uncond_windows, n_rows, horizon, rng_mixed
+                )
+                synth_pct = (
+                    0.0
+                    if n_rows == 0
+                    else 100.0 * n_rows / (lookback + n_rows)
+                )
+            else:
+                hmm_paths = sample_simple_paths(
+                    specialist_pools[k_star], n_synth, horizon, rng_hmm
+                )
+                mixed_paths = sample_uncond_simple_paths(
+                    uncond_windows, n_synth, horizon, rng_mixed
+                )
+                synth_pct = float(n_synth) * 10.0
             for method, paths in (("hmm-diffusion", hmm_paths), ("mixed", mixed_paths)):
                 weights = _weights_for_hold(
                     real_lb,
@@ -152,12 +194,14 @@ def run_mvo_backtest(
                     ridge=ridge,
                     max_weight=max_weight,
                     objective=objective,
+                    mix_mode=mix_mode,
                 )
                 port = hold @ weights
                 rows.append(
                     {
                         "method": method,
                         "n_synth": int(n_synth),
+                        "synth_pct": float(synth_pct),
                         "hold_start": int(val_start),
                         "start_date": start_date,
                         "end_date": end_date,
@@ -174,7 +218,7 @@ def run_mvo_backtest(
         summary = pd.DataFrame()
     else:
         summary = (
-            windows.groupby(["method", "n_synth", "bucket"], dropna=False)
+            windows.groupby(["method", "n_synth", "synth_pct", "bucket"], dropna=False)
             .agg(
                 n_windows=("sharpe", "size"),
                 sharpe_mean=("sharpe", "mean"),

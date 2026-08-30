@@ -212,6 +212,9 @@ def tile_to_length(arr: np.ndarray, length: int) -> np.ndarray:
     return np.concatenate([arr] * reps, axis=0)[:length]
 
 
+MIX_MODES = ("column", "row")
+
+
 def mix_train_with_regime_paths(
     real_train: np.ndarray,
     synth_paths: np.ndarray | None,
@@ -242,6 +245,35 @@ def mix_train_with_regime_paths(
             series[:, path_idx] = tile_to_length(synth_paths[path_idx, :, asset_idx], t_mix)
         extra_cols.append(series)
     return np.hstack([real_block, np.hstack(extra_cols)]), n_synth
+
+
+def mix_train_row_append(
+    real_train: np.ndarray,
+    synth_paths: np.ndarray | None,
+) -> tuple[np.ndarray, int]:
+    """Row-append synthetic days under the real lookback.
+
+    ``synth_paths`` is ``(n_synth, H, n_assets)`` or a 2D block ``(T, n_assets)``.
+    The traded universe stays 10 assets. ``n = 0`` / empty extra returns the real
+    lookback unchanged.
+    """
+    real_train = np.asarray(real_train, dtype=float)
+    if real_train.ndim != 2:
+        raise ValueError(f"real_train must be 2D, got {real_train.shape}")
+    if synth_paths is None:
+        return real_train.copy(), 0
+    extra = np.asarray(synth_paths, dtype=float)
+    if extra.size == 0:
+        return real_train.copy(), 0
+    if extra.ndim == 3:
+        extra = extra.reshape(extra.shape[0] * extra.shape[1], extra.shape[2])
+    if extra.ndim != 2:
+        raise ValueError(f"synth extra must be 2D or 3D, got {extra.shape}")
+    if extra.shape[1] != real_train.shape[1]:
+        raise ValueError(
+            f"Asset mismatch: real {real_train.shape[1]} vs synth {extra.shape[1]}"
+        )
+    return np.vstack([real_train, extra]), int(extra.shape[0])
 
 
 def collapse_weights(weights: np.ndarray, n_assets: int, n_draw: int) -> np.ndarray:

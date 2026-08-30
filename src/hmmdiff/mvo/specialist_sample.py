@@ -40,6 +40,44 @@ def sample_simple_paths(
     return np.expm1(log_paths)
 
 
+def synth_rows_for_share(n_real: int, share: float) -> int:
+    """Number of synth rows so ``synth / (real + synth) == share``.
+
+    ``share`` is in ``[0, 1)``. ``share = 0`` returns 0.
+    """
+    n_real = int(n_real)
+    share = float(share)
+    if n_real < 1:
+        raise ValueError(f"n_real must be >= 1, got {n_real}")
+    if share < 0 or share >= 1:
+        raise ValueError(f"share must be in [0, 1), got {share}")
+    if share == 0.0:
+        return 0
+    return int(round(share / (1.0 - share) * n_real))
+
+
+def sample_simple_rows(
+    windows: np.ndarray,
+    n_rows: int,
+    horizon: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Draw contiguous horizon slices, flatten, and keep the first ``n_rows`` days."""
+    pool = np.asarray(windows, dtype=float)
+    if pool.ndim != 3:
+        raise ValueError(f"windows must be (n_pool, seq_len, n_assets), got {pool.shape}")
+    n_assets = int(pool.shape[-1])
+    n_rows = int(n_rows)
+    if n_rows <= 0:
+        return np.zeros((0, n_assets), dtype=float)
+    n_win = int(np.ceil(n_rows / float(horizon)))
+    paths = sample_simple_paths(windows, n_win, horizon, rng)
+    extra = paths.reshape(-1, n_assets)
+    if extra.shape[0] < n_rows:
+        raise ValueError(f"Need {n_rows} synth rows, sampled {extra.shape[0]}")
+    return extra[:n_rows]
+
+
 def sample_simple_paths_by_daily_regime(
     pools: dict[int, np.ndarray],
     daily_regimes: np.ndarray,

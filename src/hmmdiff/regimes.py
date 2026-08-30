@@ -173,9 +173,10 @@ def fit_regimes(
 ) -> RegimeLabels:
     """Run Vol_Regime on a return series and return cached labels.
 
-    ``coverage_end`` is the exclusive index of the slice that must contain every regime. The default
-    is the inner training cut used by the A001 pipeline. Equal-weight labeling passes the HMM train
-    length so all regimes appear in 2001–2014 even though clustering uses 2001–2022.
+    ``coverage_end`` is the exclusive index of the slice that must contain every regime. Pass the HMM
+    train length so all regimes appear in 2001–2014 even though clustering uses 2001–2022. The
+    default (inner-train fraction of the series) is only for callers that still cluster on train
+    alone.
     """
     n_regimes = int(cfg["regimes"]["n_regimes"])
     methods = _clustering_methods(cfg)

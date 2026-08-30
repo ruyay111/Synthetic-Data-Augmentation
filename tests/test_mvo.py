@@ -23,11 +23,12 @@ from hmmdiff.mvo.portfolio_core import (
     collapse_weights,
     greedy_max_return_box,
     mean_var_weights,
+    mix_train_row_append,
     mix_train_with_regime_paths,
     project_sum_to_one_box,
 )
 from hmmdiff.mvo.scale_check import run_scale_check
-from hmmdiff.mvo.specialist_sample import sample_simple_paths, sample_simple_paths_by_daily_regime
+from hmmdiff.mvo.specialist_sample import sample_simple_paths, sample_simple_paths_by_daily_regime, sample_simple_rows, synth_rows_for_share
 
 
 class ForecastTests(unittest.TestCase):
@@ -109,6 +110,52 @@ class MixTests(unittest.TestCase):
         weights = np.array([0.1, 0.2, 0.3, 0.4])
         collapsed = collapse_weights(weights, n_assets=2, n_draw=1)
         np.testing.assert_allclose(collapsed, np.array([0.4, 0.6]))
+
+    def test_row_append_n0_unchanged(self):
+        real = np.arange(12, dtype=float).reshape(6, 2)
+        mixed, n = mix_train_row_append(real, None)
+        self.assertEqual(n, 0)
+        np.testing.assert_array_equal(mixed, real)
+        empty = np.zeros((0, 3, 2))
+        mixed0, n0 = mix_train_row_append(real, empty)
+        self.assertEqual(n0, 0)
+        np.testing.assert_array_equal(mixed0, real)
+
+    def test_row_append_grows_rows_not_cols(self):
+        real = np.ones((6, 2))
+        synth = np.full((2, 3, 2), 2.0)
+        mixed, n = mix_train_row_append(real, synth)
+        self.assertEqual(n, 6)
+        self.assertEqual(mixed.shape, (12, 2))
+        np.testing.assert_array_equal(mixed[:6], real)
+        np.testing.assert_array_equal(mixed[6:], np.full((6, 2), 2.0))
+
+    def test_synth_rows_for_share_is_overall_training_pct(self):
+        lookback = 252
+        for pct in range(10, 91, 10):
+            n_rows = synth_rows_for_share(lookback, pct / 100.0)
+            share = n_rows / (lookback + n_rows)
+            self.assertAlmostEqual(share, pct / 100.0, places=10, msg=pct)
+        self.assertEqual(synth_rows_for_share(252, 0.0), 0)
+        self.assertEqual(synth_rows_for_share(252, 0.10), 28)
+        self.assertEqual(synth_rows_for_share(252, 0.20), 63)
+        self.assertEqual(synth_rows_for_share(252, 0.90), 2268)
+
+    def test_sample_simple_rows_trims_to_share(self):
+        rng = np.random.default_rng(0)
+        pool = np.zeros((8, 16, 3))
+        extra = sample_simple_rows(pool, n_rows=28, horizon=8, rng=rng)
+        self.assertEqual(extra.shape, (28, 3))
+        empty = sample_simple_rows(pool, n_rows=0, horizon=8, rng=rng)
+        self.assertEqual(empty.shape, (0, 3))
+
+    def test_row_append_2d_block(self):
+        real = np.ones((252, 2))
+        extra = np.full((28, 2), 2.0)
+        mixed, n = mix_train_row_append(real, extra)
+        self.assertEqual(n, 28)
+        self.assertEqual(mixed.shape, (280, 2))
+        self.assertAlmostEqual(n / mixed.shape[0], 0.10)
 
     def test_mean_var_sum_to_one_shorts_allowed(self):
         rng = np.random.default_rng(1)
