@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Stage 2 (EW): cut per-regime 10-asset windows using equal-weight labels.
 
-Reads full-sample EW labels (2001–2022) from stage 1, then cuts diffusion windows only on the
-2001–2014 train dates so the test period is not leaked into the specialists. Writes
+Reads full-sample EW labels (2001–2022) from stage 1 and cuts diffusion windows on the same
+overlap. The HMM still trains only on 2001–2014; that split is applied later, not here. Writes
 
   data/processed/regime_windows_ew/regime_{k}.npy
   data/processed/regime_windows_ew/manifest.json
@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from hmmdiff.config import config_path, load_config  # noqa: E402
-from hmmdiff.ew import align_ew_train_panel, load_ew_returns  # noqa: E402
+from hmmdiff.ew import align_ew_diffusion_panel, load_ew_returns  # noqa: E402
 from hmmdiff.regimes import load_labels  # noqa: E402
 from hmmdiff.windows import build_windows, save_windows  # noqa: E402
 
@@ -82,10 +82,10 @@ def main() -> int:
             f"{labels_path} not found. Run scripts/01_label_regimes_ew.py first."
         )
     regimes = load_labels(labels_path)
-    panel, labels, dates, ew_series = align_ew_train_panel(returns, regimes.labels, cfg)
+    panel, labels, dates, ew_series = align_ew_diffusion_panel(returns, regimes.labels, cfg)
 
     print(
-        f"building windows from {len(panel)} EW-train days "
+        f"building windows from {len(panel)} EW overlap days "
         f"({dates[0].date()} to {dates[-1].date()}), "
         f"{panel.shape[1]} assets, seq_len={cfg['diffusion']['seq_len']}"
     )

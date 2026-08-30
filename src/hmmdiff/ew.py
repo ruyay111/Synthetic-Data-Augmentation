@@ -1,8 +1,9 @@
 """Equal-weight regime pipeline helpers.
 
-Isolated from the A001 path. Clustering uses the full 10-asset overlap (2001–2022). The HMM
-emission is the same equal-weight series. Train/test follows the A001 calendar cutoff (2014-01-03
-/ 2014-01-06) and there is no validation slice.
+Isolated from the A001 path. Clustering and diffusion windows use the full 10-asset overlap
+(2001–2022). The HMM emission is the same equal-weight series, but the HMM still trains only on
+2001–2014. Train/test follows the A001 calendar cutoff (2014-01-03 / 2014-01-06) and there is no
+validation slice.
 """
 
 from __future__ import annotations
@@ -160,12 +161,13 @@ def build_train_test_frames(
     )
 
 
-def align_ew_train_panel(
+def align_ew_diffusion_panel(
     returns: pd.DataFrame, regime_labels: np.ndarray, cfg: dict[str, Any]
 ) -> tuple[np.ndarray, np.ndarray, pd.DatetimeIndex, np.ndarray]:
-    """Train-split 10-asset log returns aligned to full-sample EW labels by date.
+    """Full-sample 10-asset log returns aligned to EW labels by date.
 
-    Clustering labels cover 2001–2022; diffusion windows are cut only from the train dates.
+    Clustering labels and diffusion windows both cover 2001–2022. The HMM still trains only on
+    2001–2014 via ``build_train_test_frames``.
     Returns ``panel``, ``labels``, ``dates``, and the aligned EW emission series.
     """
     labels = np.asarray(regime_labels)
@@ -181,18 +183,16 @@ def align_ew_train_panel(
         {
             "date": frame["date"].to_numpy(),
             "regime": labels.astype(int),
-            "split": frame["split"].to_numpy(),
             "z_return": frame["z_return"].to_numpy(dtype=float),
         }
     ).set_index("date")
-    train = labeled.loc[labeled["split"] == "train"]
-    common = panel.index.intersection(train.index)
+    common = panel.index.intersection(labeled.index)
     if common.empty:
-        raise ValueError("No overlapping dates between the multivariate panel and EW train labels.")
+        raise ValueError("No overlapping dates between the multivariate panel and EW labels.")
 
     aligned_panel = panel.loc[common, asset_columns(cfg)].to_numpy(dtype=float)
-    aligned_labels = train.loc[common, "regime"].to_numpy(dtype=int)
-    aligned_ew = train.loc[common, "z_return"].to_numpy(dtype=float)
+    aligned_labels = labeled.loc[common, "regime"].to_numpy(dtype=int)
+    aligned_ew = labeled.loc[common, "z_return"].to_numpy(dtype=float)
     return aligned_panel, aligned_labels, common, aligned_ew
 
 

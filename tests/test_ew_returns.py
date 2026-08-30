@@ -14,6 +14,7 @@ sys.path.insert(0, str(REPO / "src"))
 from hmmdiff.config import load_config
 from hmmdiff.data import build_model_frames, build_returns, compute_splits, train_returns
 from hmmdiff.ew import (
+    align_ew_diffusion_panel,
     build_ew_returns,
     build_train_test_frames,
     emission_from_log_panel,
@@ -54,6 +55,24 @@ class EWReturnsTests(unittest.TestCase):
             self.returns["ew_return"].to_numpy(),
             equal_weight_return(z_panel).to_numpy(),
         )
+
+    def test_diffusion_windows_use_full_sample_hmm_uses_train(self):
+        counts = split_counts(self.returns)
+        dummy_labels = np.arange(len(self.returns), dtype=int) % 5
+        panel, labels, dates, ew_series = align_ew_diffusion_panel(
+            self.returns, dummy_labels, self.cfg
+        )
+        self.assertEqual(len(panel), counts["n_returns"])
+        self.assertEqual(len(labels), counts["n_returns"])
+        self.assertEqual(len(ew_series), counts["n_returns"])
+        self.assertEqual(str(dates[0].date()), counts["start_date"])
+        self.assertEqual(str(dates[-1].date()), counts["end_date"])
+        self.assertGreater(str(dates[-1].date()), counts["train_end_date"])
+
+        train_data, test_data = build_train_test_frames(self.returns, dummy_labels)
+        self.assertEqual(len(train_data), counts["n_train"])
+        self.assertEqual(len(test_data), counts["n_test"])
+        self.assertEqual(len(train_data) + len(test_data), len(panel))
 
     def test_train_test_frames_have_no_validation_slice(self):
         n_train = int((self.returns["split"] == "train").sum())

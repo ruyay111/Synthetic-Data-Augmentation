@@ -1,0 +1,93 @@
+{
+  "seq_len": 128,
+  "stride": 1,
+  "short_policy": "tile",
+  "n_regimes": 5,
+  "n_channels": 10,
+  "assets": [
+    "A001",
+    "A004",
+    "A006",
+    "A008",
+    "A009",
+    "A011",
+    "A012",
+    "A013",
+    "A014",
+    "A015"
+  ],
+  "label_asset": "equal_weight",
+  "label_channel": 0,
+  "return_units": "raw_log_returns",
+  "n_days": 5653,
+  "regimes": {
+    "0": {
+      "n_windows": 525,
+      "n_days": 1160,
+      "segments": 5,
+      "segments_long": 5,
+      "segments_tiled": 0,
+      "windows_tiled": 0,
+      "source_mean": 0.008824768908969752,
+      "source_var": 0.22015351561389573,
+      "window_mean": 0.026883642401250938,
+      "window_var": 0.20927731906836194,
+      "path": "regime_0.npy"
+    },
+    "1": {
+      "n_windows": 1330,
+      "n_days": 2600,
+      "segments": 10,
+      "segments_long": 10,
+      "segments_tiled": 0,
+      "windows_tiled": 0,
+      "source_mean": 0.047540306781038245,
+      "source_var": 0.4735403736369305,
+      "window_mean": 0.05463995850878137,
+      "window_var": 0.4504916251286004,
+      "path": "regime_1.npy"
+    },
+    "2": {
+      "n_windows": 769,
+      "n_days": 1150,
+      "segments": 8,
+      "segments_long": 3,
+      "segments_tiled": 5,
+      "windows_tiled": 410,
+      "source_mean": -0.029263468016143,
+      "source_var": 0.8459266525949585,
+      "window_mean": -0.035905563186601,
+      "window_var": 0.8329489258357172,
+      "path": "regime_2.npy"
+    },
+    "3": {
+      "n_windows": 316,
+      "n_days": 443,
+      "segments": 4,
+      "segments_long": 1,
+      "segments_tiled": 3,
+      "windows_tiled": 280,
+      "source_mean": -0.14487992291736942,
+      "source_var": 1.9683440803332337,
+      "window_mean": -0.08062824067470158,
+      "window_var": 1.9055139810667707,
+      "path": "regime_3.npy"
+    },
+    "4": {
+      "n_windows": 173,
+      "n_days": 300,
+      "segments": 2,
+      "segments_long": 1,
+      "segments_tiled": 1,
+      "windows_tiled": 100,
+      "source_mean": -0.1200224516471508,
+      "source_var": 7.6668441688952305,
+      "window_mean": -0.06775403592824603,
+      "window_var": 7.755573488730128,
+      "path": "regime_4.npy"
+    }
+  },
+  "aligned_start": "2001-01-01",
+  "aligned_end": "2022-08-31",
+  "label_source": "equal_weight"
+}

@@ -1,6 +1,7 @@
 # Equal-weight regime pipeline. Hyperparameters match configs/default.yaml; artifact paths do not, so
 # running scripts 01–04 _ew.py cannot overwrite the A001 pipeline. There is no validation slice:
-# clustering uses 2001–2022, the HMM trains on 2001–2014, and 2014–2022 is held out.
+# clustering and diffusion windows use 2001–2022, the HMM trains on 2001–2014, and 2014–2022 is the
+# HMM holdout.
 
 paths:
   raw_csv: data/raw/benchmark_data.csv
