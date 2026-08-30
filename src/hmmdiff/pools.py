@@ -111,6 +111,35 @@ def load_generated_images(
     return generated
 
 
+def load_generated_images_ew(
+    pools_root: Path,
+    n_regimes: int,
+    scale: dict[str, Any],
+    *,
+    seed: int | None = None,
+    n_windows: int | None = None,
+    calibrate_regimes: dict[int, tuple[float, float]] | None = None,
+) -> dict[str, np.ndarray]:
+    """Load 10-asset pools and convert them to EW HMM emission units."""
+    from .ew import emission_from_log_panel
+
+    generated: dict[str, np.ndarray] = {}
+    rng = np.random.default_rng(seed) if seed is not None else None
+    for regime in range(n_regimes):
+        pool = load_pool(pools_root, regime)
+        if seed is not None:
+            take = min(n_windows or pool.shape[0], pool.shape[0])
+            pool = pool[rng.choice(pool.shape[0], size=take, replace=False)]
+        elif n_windows is not None:
+            pool = pool[: min(n_windows, pool.shape[0])]
+        flat = emission_from_log_panel(pool, scale).reshape(-1)
+        if calibrate_regimes is not None:
+            target_mean, target_std = calibrate_regimes[regime]
+            flat = affine_calibrate(flat, target_mean, target_std)
+        generated[str(regime)] = flat
+    return generated
+
+
 def pools_available(pools_root: Path, n_regimes: int) -> bool:
     return all((pool_dir(pools_root, k) / "windows.npy").exists() for k in range(n_regimes))
 

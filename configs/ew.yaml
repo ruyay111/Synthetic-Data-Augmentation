@@ -1,0 +1,120 @@
+# Equal-weight regime pipeline. Hyperparameters match configs/default.yaml; artifact paths do not, so
+# running scripts 01–04 _ew.py cannot overwrite the A001 pipeline. There is no validation slice:
+# clustering uses 2001–2022, the HMM trains on 2001–2014, and 2014–2022 is held out.
+
+paths:
+  raw_csv: data/raw/benchmark_data.csv
+  returns: data/processed/ew_returns.parquet
+  regime_labels: data/processed/regime_labels_ew.npz
+  regime_windows: data/processed/regime_windows_ew
+  pools: data/pools/ew
+  checkpoints: checkpoints/ew
+  test_results: test_results/ew
+
+data:
+  # skip_rows is shared with the A001 series so the 2014-01-03 train cutoff is the same calendar date.
+  date_column: as_of
+  price_column: A001
+  skip_rows: 2100
+  # Ten-asset panel. Stage 1 clusters the equal-weight standardized return of these columns.
+  asset_columns:
+    - A001
+    - A004
+    - A006
+    - A008
+    - A009
+    - A011
+    - A012
+    - A013
+    - A014
+    - A015
+  # train_fraction is applied to the A001 calendar (via build_returns) and then mapped onto EW dates.
+  # train_val_fraction is unused: the EW HMM has no validation slice.
+  train_fraction: 0.75
+  train_val_fraction: 0.75
+
+regimes:
+  n_regimes: 5
+  # Vol_Regime.get_changepoints PELT penalty. Lower values cut more segments, which lets k-means
+  # assign some post-2001 low-vol stretches to regime 0 (needed for 128-day diffusion windows).
+  # 18 + kmeans keeps five variance-ordered regimes in the inner training slice and raises the
+  # thinnest ten-asset-overlap window count from 3 (pen=22) to 136. Spectral clustering still
+  # under-selects on current libraries; see README.md.
+  changepoint_penalty: 18
+  # auto = spectral then kmeans; kmeans forces five clusters on the rotated spectral embedding.
+  clustering_method: kmeans
+  # If the configured penalty yields fewer than n_regimes on a given platform (common on Windows
+  # even with the same requirements.txt), stage 1 tries these in order until five variance-ordered
+  # regimes are found with all five present in the inner training slice.
+  changepoint_penalty_fallback:
+    - 18
+    - 10
+    - 12
+    - 22
+    - 20
+    - 24
+    - 26
+    - 28
+    - 30
+    - 32
+    - 35
+    - 40
+    - 45
+    - 15
+  clustering_seed: 0
+  ewm_com: 0.5
+
+diffusion:
+  seq_len: 128
+  enc_in: 10
+  stride: 1
+  # Cyclically repeat same-regime segments shorter than seq_len rather than dropping them.
+  short_policy: tile
+  batch_size: 32
+  sample_multiplier: 8
+  train_epochs: 50
+  learning_rate: 0.0027983303288563873
+  lr_decay_rounds: 10
+  # Full ruya loss; Corr is meaningful at enc_in=10 because it matches cross-asset correlations.
+  loss: 1.0-KL2_N+1.0-Corr+1.0-FFT
+  scale: quantile
+
+sampling:
+  n_pool: 128
+  sample_step: 450
+  temperature: 0.7473231454237225
+  sampler: DDPM
+  method: discrete
+
+hmm:
+  num_warmup: 200
+  num_samples: 100
+  num_chains: 1
+  rng_seed: 1
+  top_k: 2
+  # Neural HMM (Pyro SVI). Unlike the NumPyro variants, which take an explicit PRNGKey, the reference
+  # never seeds Pyro. The fit is genuinely unstable across initializations: repeated runs of this
+  # exact configuration have landed anywhere between 37% and 71% train accuracy, because the emitter
+  # sometimes collapses the three highest-volatility regimes onto one sigma. Seeding makes a run
+  # reproducible; it does not make the estimator stable. See README.md.
+  neural:
+    z_dim: 1
+    hidden_dim: 10
+    emission_dim: 1
+    learning_rate: 0.1
+    n_steps: 100
+    seed: 0
+  # Semi-supervised HMM: fraction of the train slice that keeps its labels.
+  semi_supervised_fraction: 0.5
+
+# Expected values for the 10-asset overlap series. Script 01_label_regimes_ew.py asserts these.
+# A014 starts 2000-12-29, so the first overlap return is 2001-01-01. Train/test dates match the A001
+# calendar cutoff, not 75% of the shorter EW series.
+reference:
+  n_returns: 5653
+  n_train: 3395
+  n_test: 2258
+  start_date: '2001-01-01'
+  train_end_date: '2014-01-03'
+  test_start_date: '2014-01-06'
+  end_date: '2022-08-31'

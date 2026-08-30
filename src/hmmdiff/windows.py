@@ -62,17 +62,30 @@ def tiled_windows(block: np.ndarray, seq_len: int, stride: int) -> np.ndarray:
 
 
 def build_windows(
-    panel: np.ndarray, labels: np.ndarray, cfg: dict[str, Any]
+    panel: np.ndarray,
+    labels: np.ndarray,
+    cfg: dict[str, Any],
+    diag_series: np.ndarray | None = None,
+    label_name: str | None = None,
 ) -> tuple[dict[int, np.ndarray], dict[str, Any]]:
     """Cut per-regime windows from the labeled multivariate panel.
 
     ``panel`` has shape ``(n_days, n_channels)``; ``labels`` are its regime labels. Returns windows
     keyed by regime with shape ``(n_windows, seq_len, n_channels)``, plus a manifest.
+
+    ``diag_series`` is optional and aligned to ``panel``. When set, source/window moment diagnostics
+    use that series instead of the A001 channel. The A001 pipeline does not pass it.
     """
     if panel.ndim != 2:
         raise ValueError(f"Expected panel shape (n_days, n_channels); got {panel.shape}")
     if len(panel) != len(labels):
         raise ValueError(f"panel has {len(panel)} days but labels have {len(labels)}")
+    if diag_series is not None:
+        diag_series = np.asarray(diag_series, dtype=float)
+        if diag_series.shape != (len(panel),):
+            raise ValueError(
+                f"diag_series has shape {diag_series.shape}, expected ({len(panel)},)"
+            )
 
     seq_len = int(cfg["diffusion"]["seq_len"])
     stride = int(cfg["diffusion"]["stride"])
@@ -81,6 +94,7 @@ def build_windows(
     label_channel = cfg["data"]["asset_columns"].index(cfg["data"]["price_column"])
 
     per_regime: dict[int, list[np.ndarray]] = {k: [] for k in range(n_regimes)}
+    per_regime_diag: dict[int, list[np.ndarray]] = {k: [] for k in range(n_regimes)}
     stats = {
         k: {"segments": 0, "segments_long": 0, "segments_tiled": 0, "windows_tiled": 0}
         for k in range(n_regimes)
@@ -102,6 +116,13 @@ def build_windows(
             continue
         if windows.shape[0]:
             per_regime[regime].append(windows)
+            if diag_series is not None:
+                diag_block = diag_series[start:end, None]
+                if len(diag_block) >= seq_len:
+                    diag_windows = sliding_windows(diag_block, seq_len, stride)
+                else:
+                    diag_windows = tiled_windows(diag_block, seq_len, stride)
+                per_regime_diag[regime].append(diag_windows)
 
     n_channels = int(panel.shape[1])
     stacked = {
@@ -112,7 +133,27 @@ def build_windows(
         )
         for k in range(n_regimes)
     }
-    manifest = _build_manifest(panel, labels, stacked, stats, cfg, label_channel=label_channel)
+    stacked_diag = None
+    if diag_series is not None:
+        stacked_diag = {
+            k: (
+                np.concatenate(per_regime_diag[k], axis=0)
+                if per_regime_diag[k]
+                else np.empty((0, seq_len, 1), dtype=float)
+            )
+            for k in range(n_regimes)
+        }
+    manifest = _build_manifest(
+        panel,
+        labels,
+        stacked,
+        stats,
+        cfg,
+        label_channel=label_channel,
+        diag_series=diag_series,
+        diag_windows=stacked_diag,
+        label_name=label_name,
+    )
     return stacked, manifest
 
 
@@ -123,21 +164,29 @@ def _build_manifest(
     stats: dict[int, dict[str, int]],
     cfg: dict[str, Any],
     label_channel: int,
+    diag_series: np.ndarray | None = None,
+    diag_windows: dict[int, np.ndarray] | None = None,
+    label_name: str | None = None,
 ) -> dict[str, Any]:
     assets = list(cfg["data"]["asset_columns"])
     regimes: dict[str, Any] = {}
     for k, block in windows.items():
         source = panel[labels == k]
-        label_source = source[:, label_channel] if source.size else np.empty(0)
+        if diag_series is not None:
+            label_source = diag_series[labels == k]
+            diag_block = diag_windows[k] if diag_windows is not None else np.empty(0)
+            window_values = diag_block.reshape(-1) if diag_block.size else np.empty(0)
+        else:
+            label_source = source[:, label_channel] if source.size else np.empty(0)
+            window_values = block[:, :, label_channel].reshape(-1) if block.size else np.empty(0)
         regimes[str(k)] = {
             "n_windows": int(block.shape[0]),
             "n_days": int(source.shape[0]),
             **stats[k],
-            # Diagnostics use the A001 channel because that is what stage 1 labels on.
             "source_mean": float(label_source.mean()) if label_source.size else float("nan"),
             "source_var": float(label_source.var()) if label_source.size else float("nan"),
-            "window_mean": float(block[:, :, label_channel].mean()) if block.size else float("nan"),
-            "window_var": float(block[:, :, label_channel].var()) if block.size else float("nan"),
+            "window_mean": float(window_values.mean()) if window_values.size else float("nan"),
+            "window_var": float(window_values.var()) if window_values.size else float("nan"),
         }
     return {
         "seq_len": int(cfg["diffusion"]["seq_len"]),
@@ -146,7 +195,7 @@ def _build_manifest(
         "n_regimes": int(cfg["regimes"]["n_regimes"]),
         "n_channels": int(panel.shape[1]),
         "assets": assets,
-        "label_asset": cfg["data"]["price_column"],
+        "label_asset": label_name or cfg["data"]["price_column"],
         "label_channel": int(label_channel),
         "return_units": "raw_log_returns",
         "n_days": int(panel.shape[0]),

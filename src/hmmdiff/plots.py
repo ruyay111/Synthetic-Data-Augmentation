@@ -11,11 +11,11 @@ def _regime_colors() -> list[str]:
     return plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
 
-def plot_prices(close: np.ndarray) -> None:
+def plot_prices(close: np.ndarray, title: str = "S&P 500 TR Closing Prices") -> None:
     """Notebook cell 5."""
     plt.figure()
     plt.plot(close)
-    plt.title("S&P 500 TR Closing Prices")
+    plt.title(title)
     plt.show()
 
 

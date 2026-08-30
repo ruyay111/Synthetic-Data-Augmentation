@@ -141,11 +141,17 @@ def _run_vol_regime(
 
 
 def _labels_ok(
-    train_series: np.ndarray, labels: np.ndarray, n_regimes: int, cfg: dict[str, Any]
+    train_series: np.ndarray,
+    labels: np.ndarray,
+    n_regimes: int,
+    cfg: dict[str, Any],
+    coverage_end: int | None = None,
 ) -> tuple[bool, dict[str, Any]]:
     found = int(labels.max()) + 1
     variances = [float(np.var(train_series[labels == k])) for k in range(found)]
-    inner_cut = _inner_train_cut(len(train_series), cfg)
+    inner_cut = (
+        int(coverage_end) if coverage_end is not None else _inner_train_cut(len(train_series), cfg)
+    )
     inner_counts = np.bincount(labels[:inner_cut].astype(int), minlength=n_regimes)
     info = {
         "n_regimes_found": found,
@@ -162,8 +168,15 @@ def _labels_ok(
     return ok, info
 
 
-def fit_regimes(train_series: np.ndarray, cfg: dict[str, Any]) -> RegimeLabels:
-    """Run Vol_Regime on the training series and return cached labels."""
+def fit_regimes(
+    train_series: np.ndarray, cfg: dict[str, Any], coverage_end: int | None = None
+) -> RegimeLabels:
+    """Run Vol_Regime on a return series and return cached labels.
+
+    ``coverage_end`` is the exclusive index of the slice that must contain every regime. The default
+    is the inner training cut used by the A001 pipeline. Equal-weight labeling passes the HMM train
+    length so all regimes appear in 2001–2014 even though clustering uses 2001–2022.
+    """
     n_regimes = int(cfg["regimes"]["n_regimes"])
     methods = _clustering_methods(cfg)
     attempts: list[dict[str, Any]] = []
@@ -175,7 +188,9 @@ def fit_regimes(train_series: np.ndarray, cfg: dict[str, Any]) -> RegimeLabels:
     for penalty in _penalty_candidates(cfg):
         for method in methods:
             vc, labels = _run_vol_regime(train_series, penalty, n_regimes, cfg, method=method)
-            ok, info = _labels_ok(train_series, labels, n_regimes, cfg)
+            ok, info = _labels_ok(
+                train_series, labels, n_regimes, cfg, coverage_end=coverage_end
+            )
             attempts.append({"penalty": penalty, "method": method, "ok": ok, **info})
             if ok:
                 chosen_penalty = penalty
@@ -185,9 +200,12 @@ def fit_regimes(train_series: np.ndarray, cfg: dict[str, Any]) -> RegimeLabels:
             break
 
     if chosen_penalty is None or chosen_method is None or vc is None or labels is None:
+        slice_name = (
+            "HMM training slice" if coverage_end is not None else "inner training slice"
+        )
         lines = [
             "Could not find a changepoint penalty / clustering method that yields "
-            f"{n_regimes} variance-ordered regimes with all regimes in the inner training slice.",
+            f"{n_regimes} variance-ordered regimes with all regimes in the {slice_name}.",
             "Tried:",
         ]
         for row in attempts:
