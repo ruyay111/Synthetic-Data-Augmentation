@@ -223,7 +223,7 @@ def train_model_and_evaluate_advanced_volatility_mixture(
         mse = mean_squared_error(yr_test, y_pred)
         r2 = r2_score(yr_test, y_pred)
         metrics.append((mix_pct, mse, r2))
-        print(f"{label:>25s} | Test MSE = {mse:.6f} | R² = {r2:+.3f}")
+        print(f"{label:>25s} | Test MSE = {mse:.6f} | R2 = {r2:+.3f}")
 
         if show_each_pred_plot:
             plt.figure(figsize=(7, 4))
@@ -272,4 +272,202 @@ def train_model_and_evaluate_advanced_volatility_mixture(
         fig.tight_layout()
         plt.show()
 
+    return metrics_df
+
+
+VOL_LAG_FEATURE_COLS = ("RV_21", "RV_21_lag5", "RV_21_lag21", "AbsRet_21")
+DEFAULT_ADD_GRID = (0.0, 0.25, 0.5, 1.0, 2.0)
+
+
+def qlike_vol(y_true: np.ndarray, y_pred: np.ndarray, eps: float = 1e-12) -> float:
+    """QLIKE on variance (Patton): ``y/h - log(y/h) - 1`` with ``y, h`` = squared vol."""
+    y = np.square(np.asarray(y_true, dtype=float))
+    h = np.square(np.clip(np.asarray(y_pred, dtype=float), eps, None))
+    y = np.clip(y, eps, None)
+    return float(np.mean(y / h - np.log(y / h) - 1.0))
+
+
+def build_vol_lag_features(df, price_col, horizon=21, rv_window=21):
+    """Realized-vol lags only. No price-level MA / RSI / MACD.
+
+    ``RV_21`` is the ``rv_window``-day annualized std ending at t. The target is that
+    same series ``horizon`` trading days later. ``horizon == rv_window`` is the
+    non-overlapping next-window RV.
+    """
+    frame = df.copy().sort_index()
+    frame["Returns"] = frame[price_col].pct_change()
+    ann = np.sqrt(252.0)
+    rv = frame["Returns"].rolling(int(rv_window)).std() * ann
+    frame["RV_21"] = rv
+    frame["RV_21_lag5"] = rv.shift(5)
+    frame["RV_21_lag21"] = rv.shift(int(rv_window))
+    frame["AbsRet_21"] = frame["Returns"].abs().rolling(int(rv_window)).mean()
+    target_dates = pd.Series(frame.index, index=frame.index).shift(-int(horizon))
+    frame[VOL_TARGET_COL] = rv.shift(-int(horizon))
+    frame["target_date"] = target_dates
+    frame.dropna(inplace=True)
+    return frame
+
+
+def _synth_feature_rows(feat_synth: pd.DataFrame, feat_real_train_index) -> pd.DataFrame:
+    """Date-aligned synth: train-period rows only. Unaligned pools: all rows."""
+    if len(feat_synth) == 0:
+        return feat_synth
+    if isinstance(feat_synth.index, pd.DatetimeIndex) and isinstance(
+        feat_real_train_index, pd.DatetimeIndex
+    ):
+        common = feat_synth.index.intersection(feat_real_train_index)
+        if len(common) >= 8:
+            return feat_synth.loc[common]
+    return feat_synth
+
+
+def _sample_xy(x, y, n, rng):
+    if n <= 0 or len(x) == 0:
+        return x[:0], y[:0]
+    replace = n > len(x)
+    idx = rng.choice(len(x), size=int(n), replace=replace)
+    return x[idx], y[idx]
+
+
+def train_vol_augmentation(
+    df_real,
+    df_synth=None,
+    price_col="close",
+    horizon=21,
+    add_grid=None,
+    n_seeds=5,
+    random_state=42,
+    n_estimators=100,
+    synth_source: str | None = None,
+    plot_summary=True,
+):
+    """Keep all real train rows; add a random synthetic subsample (multiples of n_train).
+
+    Also reports persistence (``RV_21``) and HAR (linear vol lags) on real train only.
+    """
+    feat_real = build_vol_lag_features(df_real, price_col=price_col, horizon=horizon)
+    feature_cols = list(VOL_LAG_FEATURE_COLS)
+    split_idx = int(0.8 * len(feat_real))
+    real_train = feat_real.iloc[:split_idx]
+    real_test = feat_real.iloc[split_idx:]
+    xr_train = real_train[feature_cols].to_numpy(dtype=float)
+    yr_train = real_train[VOL_TARGET_COL].to_numpy(dtype=float)
+    xr_test = real_test[feature_cols].to_numpy(dtype=float)
+    yr_test = real_test[VOL_TARGET_COL].to_numpy(dtype=float)
+
+    persist_hat = xr_test[:, feature_cols.index("RV_21")]
+    har = LinearRegression()
+    har.fit(xr_train, yr_train)
+    har_hat = har.predict(xr_test)
+
+    def _row(model, mse, r2, qlike, add_mult, seed):
+        return {
+            "model": model,
+            "add_mult": float(add_mult),
+            "seed": int(seed),
+            "mse": float(mse),
+            "r2": float(r2),
+            "qlike": float(qlike),
+            "n_real_train": int(len(xr_train)),
+            "n_synth_added": 0,
+        }
+
+    rows = [
+        _row(
+            "persist",
+            mean_squared_error(yr_test, persist_hat),
+            r2_score(yr_test, persist_hat),
+            qlike_vol(yr_test, persist_hat),
+            0.0,
+            0,
+        ),
+        _row(
+            "har",
+            mean_squared_error(yr_test, har_hat),
+            r2_score(yr_test, har_hat),
+            qlike_vol(yr_test, har_hat),
+            0.0,
+            0,
+        ),
+    ]
+
+    xs_pool = np.empty((0, len(feature_cols)))
+    ys_pool = np.empty(0)
+    if df_synth is not None:
+        feat_synth = build_vol_lag_features(df_synth, price_col=price_col, horizon=horizon)
+        feat_synth = _synth_feature_rows(feat_synth, real_train.index)
+        xs_pool = feat_synth[feature_cols].to_numpy(dtype=float)
+        ys_pool = feat_synth[VOL_TARGET_COL].to_numpy(dtype=float)
+
+    if add_grid is None:
+        add_grid = DEFAULT_ADD_GRID
+
+    print(
+        f"real train {len(xr_train)}  test {len(xr_test)}  synth pool {len(xs_pool)}  "
+        f"horizon {horizon}"
+    )
+    print(
+        f"{'persist':>12s} | Test MSE = {rows[0]['mse']:.6f} | R2 = {rows[0]['r2']:+.3f} | "
+        f"QLIKE = {rows[0]['qlike']:.4f}"
+    )
+    print(
+        f"{'HAR':>12s} | Test MSE = {rows[1]['mse']:.6f} | R2 = {rows[1]['r2']:+.3f} | "
+        f"QLIKE = {rows[1]['qlike']:.4f}"
+    )
+
+    for seed in range(int(n_seeds)):
+        rng = np.random.default_rng(int(random_state) + seed)
+        rf_state = int(random_state) + seed
+        for add_mult in add_grid:
+            n_add = int(round(float(add_mult) * len(xr_train)))
+            xs, ys = _sample_xy(xs_pool, ys_pool, n_add, rng)
+            if n_add > 0 and len(xs) == 0:
+                raise ValueError("Requested synthetic rows but the synth pool is empty.")
+            x_train = np.concatenate([xr_train, xs], axis=0) if len(xs) else xr_train
+            y_train = np.concatenate([yr_train, ys], axis=0) if len(ys) else yr_train
+            model = RandomForestRegressor(n_estimators=n_estimators, random_state=rf_state)
+            model.fit(x_train, y_train)
+            y_pred = model.predict(xr_test)
+            mse = mean_squared_error(yr_test, y_pred)
+            r2 = r2_score(yr_test, y_pred)
+            qlike = qlike_vol(yr_test, y_pred)
+            rec = _row("rf", mse, r2, qlike, add_mult, seed)
+            rec["n_synth_added"] = int(len(xs))
+            rows.append(rec)
+            tag = synth_source or "synth"
+            print(
+                f"seed {seed}  +{float(add_mult):.2f}x {tag:12s} | "
+                f"n+={len(xs):4d} | Test MSE = {mse:.6f} | R2 = {r2:+.3f} | QLIKE = {qlike:.4f}"
+            )
+
+    metrics_df = pd.DataFrame(rows)
+    if plot_summary:
+        rf = metrics_df.loc[metrics_df["model"] == "rf"]
+        summary = rf.groupby("add_mult", as_index=False).agg(
+            r2_mean=("r2", "mean"),
+            r2_std=("r2", "std"),
+            mse_mean=("mse", "mean"),
+        )
+        fig, ax1 = plt.subplots(figsize=(8, 5))
+        ax1.errorbar(
+            summary["add_mult"],
+            summary["r2_mean"],
+            yerr=summary["r2_std"].fillna(0.0),
+            marker="s",
+            color="tab:blue",
+            label="RF test R² (mean ± sd)",
+        )
+        ax1.axhline(rows[0]["r2"], color="gray", ls=":", label="persist")
+        ax1.axhline(rows[1]["r2"], color="tab:green", ls="--", label="HAR")
+        ax1.set_xlabel("Synthetic rows added (× real train n)")
+        ax1.set_ylabel("Test R²")
+        title_h = f"{horizon}-day"
+        title = f"Add synthetic data, keep all real train ({title_h})"
+        if synth_source:
+            title = f"{title}\n[{synth_source}]"
+        ax1.set_title(title)
+        ax1.legend(frameon=False)
+        fig.tight_layout()
+        plt.show()
     return metrics_df

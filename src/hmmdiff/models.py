@@ -174,6 +174,48 @@ def estimate_states(
     )
 
 
+def filter_states(
+    fit: HMMFit,
+    observations: np.ndarray,
+    init_dist: np.ndarray,
+    *,
+    train_emissions: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Causal forward filter ``(T, K)`` and argmax ``(T,)``. No future smoothing.
+
+    If ``train_emissions`` is given, the filter is first run on that prefix and the
+    last filtered state is the prior before ``observations`` (e.g. inner train then 2014+).
+    """
+    from hmmdiff.mvo.hmm_forecast import filter_forward
+
+    pi = np.asarray(init_dist, dtype=float)
+    if train_emissions is not None and len(train_emissions) > 0:
+        pi = filter_forward(pi, train_emissions, fit.transmat, fit.mu, fit.sigma)[-1]
+    probs = filter_forward(pi, observations, fit.transmat, fit.mu, fit.sigma)
+    return probs, probs.argmax(axis=1).astype(int)
+
+
+def simulate_regime_path(
+    transmat: np.ndarray,
+    init_dist: np.ndarray,
+    n_steps: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Sample a length-``n_steps`` regime path from ``init_dist`` and ``transmat``."""
+    if n_steps < 1:
+        raise ValueError("n_steps must be >= 1")
+    pi = np.asarray(init_dist, dtype=float)
+    pi = pi / pi.sum()
+    p = np.asarray(transmat, dtype=float)
+    states = np.empty(n_steps, dtype=int)
+    states[0] = int(rng.choice(len(pi), p=pi))
+    for t in range(1, n_steps):
+        row = p[states[t - 1]]
+        row = row / row.sum()
+        states[t] = int(rng.choice(len(pi), p=row))
+    return states
+
+
 def accuracy_report(
     truth: np.ndarray,
     estimates: np.ndarray,

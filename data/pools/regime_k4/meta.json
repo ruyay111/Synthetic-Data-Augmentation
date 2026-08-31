@@ -7,9 +7,9 @@
   "temperature": 0.7473231454237225,
   "sampler": "DDPM",
   "method": "discrete",
-  "checkpoint_dir": "checkpoints/diffusion_denoised_x_UniTST_MP_ALL_RegimeWindows_1.0-KL2_N+1.0-Corr+1.0-FFT_sl128_ds0_cmTrue_ceTrue_ipTrue_RoPE_specialist_regime_4",
-  "generated_at": "2026-08-28T14:38:04.835912+00:00",
+  "checkpoint_dir": "checkpoints\\diffusion_denoised_x_UniTST_MP_ALL_RegimeWindows_1.0-KL2_N+1.0-Corr+1.0-FFT_sl128_ds0_cmTrue_ceTrue_ipTrue_RoPE_specialist_regime_4",
+  "generated_at": "2026-08-31T00:53:11.663173+00:00",
   "units": "raw_log_returns",
-  "mean": 0.0026097873433007695,
-  "var": 0.00042634263071118854
+  "mean": 0.0010499652893560716,
+  "var": 0.0011357070165986265
 }

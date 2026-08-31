@@ -135,14 +135,34 @@ def build_aligned_downstream_synth(
     n_regimes: int,
     df_real: pd.DataFrame,
     price_col: str = "A001",
+    state_method: str = "filter",
+    train_emissions: np.ndarray | None = None,
+    rng: np.random.Generator | None = None,
 ) -> AlignedDownstreamResult:
-    """Stitch diffusion pools along HMM states estimated on the benchmark period (2014+).
+    """Stitch diffusion pools along HMM states on the benchmark period (2014+).
 
-    The supervised HMM is fit on pre-2014 inner training data only; regimes on the benchmark window
-    are *estimated* from real z-scored returns (no Vol_Regime labels on the test period).
+    The supervised HMM is fit on pre-2014 inner training data only. ``state_method``:
+
+    - ``filter``: causal forward filter (default). Optional ``train_emissions`` are
+      filtered first so the 2014+ prior does not use later returns.
+    - ``smooth``: full-sample forward-backward (uses future emissions).
+    - ``simulate``: sample a path from the transition matrix; no real 2014+ emissions.
     """
     emissions, dates = benchmark_emissions(returns, df_real.index)
-    _, regime_est = models.estimate_states(supervised, emissions, init_dist, n_regimes)
+    method = str(state_method).lower()
+    if method == "smooth":
+        _, regime_est = models.estimate_states(supervised, emissions, init_dist, n_regimes)
+    elif method == "filter":
+        _, regime_est = models.filter_states(
+            supervised, emissions, init_dist, train_emissions=train_emissions
+        )
+    elif method == "simulate":
+        sim_rng = rng if rng is not None else np.random.default_rng(0)
+        regime_est = models.simulate_regime_path(
+            supervised.transmat, init_dist, len(emissions), sim_rng
+        )
+    else:
+        raise ValueError(f"Unknown state_method {state_method!r}; use filter, smooth, or simulate.")
     stitched_z = stitch.stitch(generated_images, regime_est)
     if len(stitched_z) != len(dates):
         raise ValueError(
