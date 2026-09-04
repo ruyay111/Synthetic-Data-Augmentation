@@ -17,12 +17,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from hmmdiff.config import config_path, load_config  # noqa: E402
-from hmmdiff.ew import align_ew_diffusion_panel, load_ew_returns  # noqa: E402
-from hmmdiff.regimes import load_labels  # noqa: E402
-from hmmdiff.windows import build_windows, save_windows  # noqa: E402
+from hmmdiff.constants import MIN_WINDOWS  # noqa: E402
+from hmmdiff.data_collection.equal_weight_processor import EqualWeightProcessor  # noqa: E402
+from hmmdiff.data_collection.regime_processor import RegimeProcessor  # noqa: E402
+from hmmdiff.data_collection.window_processor import WindowProcessor  # noqa: E402
 
 DEFAULT_CONFIG = "configs/ew.yaml"
-MIN_INDEPENDENT_WINDOWS = 8
+MIN_INDEPENDENT_WINDOWS = MIN_WINDOWS
 MOMENT_TOLERANCE = 0.35
 
 
@@ -74,15 +75,20 @@ def report(manifest: dict) -> list[str]:
 def main() -> int:
     args = parse_args()
     cfg = load_config(args.config)
+    ew_processor = EqualWeightProcessor(cfg)
+    regime_processor = RegimeProcessor()
+    window_processor = WindowProcessor()
 
-    returns = load_ew_returns(cfg)
+    returns = ew_processor.LoadEwReturns(cfg)
     labels_path = config_path(cfg, "regime_labels")
     if not labels_path.exists():
         raise FileNotFoundError(
             f"{labels_path} not found. Run scripts/01_label_regimes_ew.py first."
         )
-    regimes = load_labels(labels_path)
-    panel, labels, dates, ew_series = align_ew_diffusion_panel(returns, regimes.labels, cfg)
+    regimes = regime_processor.LoadLabels(labels_path)
+    panel, labels, dates, ew_series = ew_processor.AlignEwDiffusionPanel(
+        returns, regimes.labels, cfg
+    )
 
     print(
         f"building windows from {len(panel)} EW overlap days "
@@ -90,7 +96,7 @@ def main() -> int:
         f"{panel.shape[1]} assets, seq_len={cfg['diffusion']['seq_len']}"
     )
     print(f"assets: {', '.join(cfg['data']['asset_columns'])}")
-    windows, manifest = build_windows(
+    windows, manifest = window_processor.BuildWindows(
         panel, labels, cfg, diag_series=ew_series, label_name="equal_weight"
     )
     manifest["aligned_start"] = str(dates[0].date())
@@ -102,7 +108,7 @@ def main() -> int:
     print(f"total windows: {total}")
 
     output_dir = config_path(cfg, "regime_windows")
-    save_windows(windows, manifest, output_dir)
+    window_processor.SaveWindows(windows, manifest, output_dir)
     print(f"[OK] wrote {output_dir}")
 
     if any(block.shape[0] == 0 for block in windows.values()):

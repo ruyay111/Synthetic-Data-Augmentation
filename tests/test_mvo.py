@@ -20,6 +20,8 @@ from hmmdiff.mvo.hmm_forecast import (
     walk_open_loop,
 )
 from hmmdiff.mvo.portfolio_core import (
+    annualized_return,
+    annualized_variance,
     collapse_weights,
     greedy_max_return_box,
     mean_var_weights,
@@ -157,6 +159,15 @@ class MixTests(unittest.TestCase):
         self.assertEqual(mixed.shape, (280, 2))
         self.assertAlmostEqual(n / mixed.shape[0], 0.10)
 
+    def test_annualized_return_and_variance(self):
+        r = np.full(252, 0.001)
+        self.assertAlmostEqual(annualized_return(r), 0.001 * 252)
+        self.assertAlmostEqual(annualized_variance(r), 0.0)
+        pair = np.array([0.0, 0.02])
+        self.assertAlmostEqual(annualized_variance(pair), float(np.var(pair, ddof=0) * 252))
+        self.assertTrue(np.isnan(annualized_return(np.array([]))))
+        self.assertTrue(np.isnan(annualized_variance(np.array([0.01]))))
+
     def test_mean_var_sum_to_one_shorts_allowed(self):
         rng = np.random.default_rng(1)
         r = rng.normal(0.001, 0.01, size=(60, 10))
@@ -216,7 +227,9 @@ class MixTests(unittest.TestCase):
 
 class BucketAndScaleTests(unittest.TestCase):
     def test_high_low_vol(self):
+        self.assertEqual(window_vol_bucket(np.array([0, 1, 1, 0, 1, 0])), "low vol")
         self.assertEqual(window_vol_bucket(np.array([0, 1, 2, 1, 0, 2])), "low vol")
+        self.assertEqual(window_vol_bucket(np.array([2, 2, 2, 0, 0, 1])), "high vol")
         self.assertEqual(window_vol_bucket(np.array([3, 3, 4, 2, 1, 0])), "high vol")
         self.assertEqual(window_vol_bucket(np.array([3, 3, 3, 0, 0, 0])), "high vol")
 

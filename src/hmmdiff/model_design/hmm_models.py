@@ -1,0 +1,485 @@
+"""HMM variant wrappers and shared evaluation helpers.
+
+HMMFit stores fitted parameters. SupervisedHmm, MarkovSwitchingHmm,
+SemiSupervisedHmm, and NeuralHmm inherit BaseHiddenMarkovModel and share
+state estimation helpers.
+Literature: Hamilton (1989); Rabiner (1989).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Callable
+
+import numpy as np
+import pandas as pd
+
+from hmmdiff.model_design.base_model import BaseHiddenMarkovModel
+
+
+@dataclass
+class HMMFit:
+    """Fitted parameters, in the form ``forward_backward`` consumes."""
+
+    name: str
+    transmat: np.ndarray  # (K, K)
+    mu: np.ndarray  # (K,)
+    sigma: np.ndarray  # (K,)
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+
+    def summary(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            {"mean": self.mu, "sigma": self.sigma},
+            index=pd.Index(range(len(self.mu)), name="regime"),
+        )
+
+
+def _mcmc_fit(model: Callable, name: str, cfg: dict[str, Any], *model_args) -> HMMFit:
+    """Run NUTS on a NumPyro model and reduce the posterior to its means."""
+    import jax.numpy as jnp  # noqa: F401  (imported for side effects / availability check)
+    from jax import random
+    from numpyro.infer import MCMC, NUTS
+
+    hmm_cfg = cfg["hmm"]
+    mcmc = MCMC(
+        NUTS(model),
+        num_warmup=hmm_cfg["num_warmup"],
+        num_samples=hmm_cfg["num_samples"],
+        num_chains=hmm_cfg["num_chains"],
+        progress_bar=True,
+    )
+    mcmc.run(random.PRNGKey(hmm_cfg["rng_seed"]), *model_args)
+
+    posterior = mcmc.get_samples()
+    return HMMFit(
+        name=name,
+        transmat=np.asarray(posterior["probs_x"].mean(0)),
+        mu=np.asarray(posterior["probs_mu"].mean(0)),
+        sigma=np.asarray(posterior["probs_sigma"].mean(0)),
+        diagnostics={"mcmc": mcmc},
+    )
+
+
+def fit_supervised_hmm(train_data: pd.DataFrame, n_regimes: int, cfg: dict[str, Any]) -> HMMFit:
+    """Notebook cell 24. Both regimes and emissions are observed."""
+    import jax.numpy as jnp
+    from hmmgan.hmm import supervised_hmm
+
+    data = jnp.array(train_data.values, dtype=jnp.float32)
+    return _mcmc_fit(supervised_hmm, "Supervised HMM", cfg, data, n_regimes)
+
+
+def fit_markov_switching(train_data: pd.DataFrame, n_regimes: int, cfg: dict[str, Any]) -> HMMFit:
+    """Notebook cell 36. Emission mean is regressed on the previous emission.
+
+    The first row is dropped because ``emission_lag`` is NaN there.
+    """
+    import jax.numpy as jnp
+    from hmmgan.hmm import markov_switching_model
+
+    data = jnp.array(train_data.values[1:], dtype=jnp.float32)
+    return _mcmc_fit(markov_switching_model, "Markov Switching Model", cfg, data, n_regimes)
+
+
+def fit_semi_supervised_hmm(
+    train_data: pd.DataFrame, n_regimes: int, cfg: dict[str, Any]
+) -> HMMFit:
+    """Notebook cell 49. The first half keeps its labels, the second half is unlabeled.
+
+    Emissions in the unlabeled half contribute through a forward-algorithm factor, so the transition
+    matrix is informed by data whose states were never observed.
+    """
+    import jax.numpy as jnp
+    from hmmgan.hmm import semi_supervised_hmm
+
+    cut = int(cfg["hmm"]["semi_supervised_fraction"] * train_data.shape[0])
+    supervised_data = jnp.array(train_data.values[:cut, 1], dtype=jnp.float32)
+    supervised_labels = jnp.array(train_data.values[:cut, 0], dtype=jnp.int32)
+    unsupervised_data = jnp.array(train_data.values[cut:, 1], dtype=jnp.float32)
+    return _mcmc_fit(
+        semi_supervised_hmm,
+        "Semi-Supervised HMM",
+        cfg,
+        supervised_data,
+        supervised_labels,
+        unsupervised_data,
+        n_regimes,
+    )
+
+
+def fit_neural_hmm(train_data: pd.DataFrame, n_regimes: int, cfg: dict[str, Any]) -> HMMFit:
+    """Notebook cells 62-65. Emissions come from a small network instead of free parameters.
+
+    Fitted with SVI under an ``AutoDelta`` guide restricted to the ``probs_`` sites, so the transition
+    matrix is a MAP point estimate and the emission parameters are read straight off the network.
+    """
+    import pyro
+    import torch
+    from pyro import poutine
+    from pyro.infer import SVI, TraceEnum_ELBO
+    from pyro.infer.autoguide import AutoDelta
+    from pyro.optim import Adam
+
+    from hmmgan.hmm import Emitter, neural_hmm
+
+    neural_cfg = cfg["hmm"]["neural"]
+    # Seeds the emitter initialization as well as SVI, so the whole fit is reproducible.
+    pyro.set_rng_seed(int(neural_cfg["seed"]))
+    emissions = torch.tensor(train_data.emission.values)
+    states = torch.tensor(train_data.regime.values)
+    emitter = Emitter(
+        neural_cfg["z_dim"], neural_cfg["hidden_dim"], neural_cfg["emission_dim"]
+    )
+
+    guide = AutoDelta(
+        poutine.block(neural_hmm, expose_fn=lambda msg: msg["name"].startswith("probs_"))
+    )
+    svi = SVI(neural_hmm, guide, Adam({"lr": neural_cfg["learning_rate"]}), TraceEnum_ELBO())
+
+    pyro.clear_param_store()
+    losses = []
+    for _ in range(neural_cfg["n_steps"]):
+        losses.append(svi.step(emissions, emitter, n_regimes, states) / len(emissions))
+
+    with torch.no_grad():
+        params = [emitter(torch.tensor([i], dtype=torch.float32)) for i in range(n_regimes)]
+    return HMMFit(
+        name="Neural HMM",
+        transmat=pyro.get_param_store()["AutoDelta.probs_z"].detach().numpy(),
+        mu=np.array([p[0].item() for p in params]),
+        sigma=np.array([p[1].item() for p in params]),
+        diagnostics={"elbo_losses": losses, "emitter": emitter},
+    )
+
+
+FITTERS: dict[str, Callable[[pd.DataFrame, int, dict[str, Any]], HMMFit]] = {
+    "supervised": fit_supervised_hmm,
+    "markov_switching": fit_markov_switching,
+    "semi_supervised": fit_semi_supervised_hmm,
+    "neural": fit_neural_hmm,
+}
+
+
+def initial_distribution(train_data: pd.DataFrame, n_regimes: int) -> np.ndarray:
+    """Regime frequencies on the training frame, reindexed over all regimes."""
+    counts = train_data.regime.value_counts(normalize=True)
+    return counts.reindex(range(n_regimes), fill_value=0.0).sort_index().values
+
+
+def estimate_states(
+    fit: HMMFit, observations: np.ndarray, init_dist: np.ndarray, n_regimes: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Smoothed state posteriors ``(T, K)`` and their argmax ``(T,)``."""
+    from hmmgan.state_estimation import forward_backward
+
+    return forward_backward(
+        init_dist=init_dist,
+        observations=observations,
+        transition_matrix=fit.transmat,
+        mu=fit.mu,
+        sigma=fit.sigma,
+        num_states=n_regimes,
+    )
+
+
+def filter_states(
+    fit: HMMFit,
+    observations: np.ndarray,
+    init_dist: np.ndarray,
+    *,
+    train_emissions: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Causal forward filter ``(T, K)`` and argmax ``(T,)``. No future smoothing.
+
+    If ``train_emissions`` is given, the filter is first run on that prefix and the
+    last filtered state is the prior before ``observations`` (e.g. inner train then 2014+).
+    """
+    from hmmdiff.mvo.hmm_forecast import filter_forward
+
+    pi = np.asarray(init_dist, dtype=float)
+    if train_emissions is not None and len(train_emissions) > 0:
+        pi = filter_forward(pi, train_emissions, fit.transmat, fit.mu, fit.sigma)[-1]
+    probs = filter_forward(pi, observations, fit.transmat, fit.mu, fit.sigma)
+    return probs, probs.argmax(axis=1).astype(int)
+
+
+def simulate_regime_path(
+    transmat: np.ndarray,
+    init_dist: np.ndarray,
+    n_steps: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Sample a length-``n_steps`` regime path from ``init_dist`` and ``transmat``."""
+    if n_steps < 1:
+        raise ValueError("n_steps must be >= 1")
+    pi = np.asarray(init_dist, dtype=float)
+    pi = pi / pi.sum()
+    p = np.asarray(transmat, dtype=float)
+    states = np.empty(n_steps, dtype=int)
+    states[0] = int(rng.choice(len(pi), p=pi))
+    for t in range(1, n_steps):
+        row = p[states[t - 1]]
+        row = row / row.sum()
+        states[t] = int(rng.choice(len(pi), p=row))
+    return states
+
+
+def accuracy_report(
+    truth: np.ndarray,
+    estimates: np.ndarray,
+    probabilities: np.ndarray,
+    n_regimes: int,
+    top_k: int = 2,
+) -> dict[str, float]:
+    """Accuracy and top-k accuracy."""
+    from sklearn.metrics import accuracy_score, top_k_accuracy_score
+
+    return {
+        "accuracy": accuracy_score(truth, estimates),
+        f"top_{top_k}_accuracy": top_k_accuracy_score(
+            y_true=truth, y_score=probabilities, k=top_k, labels=list(range(n_regimes))
+        ),
+    }
+
+
+class SupervisedHmm(BaseHiddenMarkovModel):
+    """Supervised HMM: both regimes and emissions are observed (notebook cell 24)."""
+
+    name = "Supervised HMM"
+
+    def Fit(
+        self,
+        train_data: pd.DataFrame,
+        cfg: dict[str, Any] | None = None,
+        n_regimes: int | None = None,
+    ) -> HMMFit:
+        """
+        Fit a supervised HMM with NUTS.
+
+        Parameters:
+        train_data: pandas.DataFrame
+            Frame with regime and emission columns.
+        cfg: dict or None
+            Pipeline config with an hmm block.
+        n_regimes: int or None
+            Number of states; defaults to cfg['regimes']['n_regimes'].
+
+        Return:
+           HMMFit with transmat, mu, and sigma.
+        """
+        if cfg is None:
+            raise ValueError("Fit requires a config dict.")
+        n_states = int(n_regimes if n_regimes is not None else cfg["regimes"]["n_regimes"])
+        return fit_supervised_hmm(train_data, n_states, cfg)
+
+
+class MarkovSwitchingHmm(BaseHiddenMarkovModel):
+    """Markov switching model: emission mean is regressed on the previous emission."""
+
+    name = "Markov Switching Model"
+
+    def Fit(
+        self,
+        train_data: pd.DataFrame,
+        cfg: dict[str, Any] | None = None,
+        n_regimes: int | None = None,
+    ) -> HMMFit:
+        """
+        Fit a Markov switching model with NUTS.
+
+        Parameters:
+        train_data: pandas.DataFrame
+            Frame with regime, emission, and emission_lag.
+        cfg: dict or None
+            Pipeline config with an hmm block.
+        n_regimes: int or None
+            Number of states.
+
+        Return:
+           HMMFit.
+        """
+        if cfg is None:
+            raise ValueError("Fit requires a config dict.")
+        n_states = int(n_regimes if n_regimes is not None else cfg["regimes"]["n_regimes"])
+        return fit_markov_switching(train_data, n_states, cfg)
+
+
+class SemiSupervisedHmm(BaseHiddenMarkovModel):
+    """Semi-supervised HMM: a prefix of labels is observed, the rest is unlabeled."""
+
+    name = "Semi-Supervised HMM"
+
+    def Fit(
+        self,
+        train_data: pd.DataFrame,
+        cfg: dict[str, Any] | None = None,
+        n_regimes: int | None = None,
+    ) -> HMMFit:
+        """
+        Fit a semi-supervised HMM with NUTS.
+
+        Parameters:
+        train_data: pandas.DataFrame
+            Frame with regime and emission columns.
+        cfg: dict or None
+            Pipeline config with hmm.semi_supervised_fraction.
+        n_regimes: int or None
+            Number of states.
+
+        Return:
+           HMMFit.
+        """
+        if cfg is None:
+            raise ValueError("Fit requires a config dict.")
+        n_states = int(n_regimes if n_regimes is not None else cfg["regimes"]["n_regimes"])
+        return fit_semi_supervised_hmm(train_data, n_states, cfg)
+
+
+class NeuralHmm(BaseHiddenMarkovModel):
+    """Neural HMM: emissions come from a small network fitted with SVI."""
+
+    name = "Neural HMM"
+
+    def Fit(
+        self,
+        train_data: pd.DataFrame,
+        cfg: dict[str, Any] | None = None,
+        n_regimes: int | None = None,
+    ) -> HMMFit:
+        """
+        Fit a neural HMM with Pyro SVI.
+
+        Parameters:
+        train_data: pandas.DataFrame
+            Frame with regime and emission columns.
+        cfg: dict or None
+            Pipeline config with hmm.neural.
+        n_regimes: int or None
+            Number of states.
+
+        Return:
+           HMMFit.
+        """
+        if cfg is None:
+            raise ValueError("Fit requires a config dict.")
+        n_states = int(n_regimes if n_regimes is not None else cfg["regimes"]["n_regimes"])
+        return fit_neural_hmm(train_data, n_states, cfg)
+
+
+class HmmStateEstimator:
+    """Shared decode and accuracy helpers used after any HMM Fit."""
+
+    def InitialDistribution(self, train_data: pd.DataFrame, n_regimes: int) -> np.ndarray:
+        """
+        Regime frequencies on the training frame.
+
+        Parameters:
+        train_data: pandas.DataFrame
+            Frame with a regime column.
+        n_regimes: int
+            Number of states.
+
+        Return:
+           numpy.ndarray of length K.
+        """
+        return initial_distribution(train_data, n_regimes)
+
+    def EstimateStates(
+        self, fit: HMMFit, observations: np.ndarray, init_dist: np.ndarray, n_regimes: int
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Smoothed state posteriors and their argmax.
+
+        Parameters:
+        fit: HMMFit
+            Fitted HMM parameters.
+        observations: numpy.ndarray
+            Emission series.
+        init_dist: numpy.ndarray
+            Initial distribution.
+        n_regimes: int
+            Number of states.
+
+        Return:
+           tuple of (probabilities (T, K), argmax (T,)).
+        """
+        return estimate_states(fit, observations, init_dist, n_regimes)
+
+    def FilterStates(
+        self,
+        fit: HMMFit,
+        observations: np.ndarray,
+        init_dist: np.ndarray,
+        train_emissions: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Causal forward filter and argmax.
+
+        Parameters:
+        fit: HMMFit
+            Fitted HMM parameters.
+        observations: numpy.ndarray
+            Emission series to filter.
+        init_dist: numpy.ndarray
+            Initial distribution.
+        train_emissions: numpy.ndarray or None
+            Optional prefix used to warm-start the filter.
+
+        Return:
+           tuple of (probabilities (T, K), argmax (T,)).
+        """
+        return filter_states(fit, observations, init_dist, train_emissions=train_emissions)
+
+    def SimulateRegimePath(
+        self,
+        transmat: np.ndarray,
+        init_dist: np.ndarray,
+        n_steps: int,
+        rng: np.random.Generator,
+    ) -> np.ndarray:
+        """
+        Sample a regime path from init_dist and transmat.
+
+        Parameters:
+        transmat: numpy.ndarray
+            Transition matrix (K, K).
+        init_dist: numpy.ndarray
+            Initial distribution (K,).
+        n_steps: int
+            Path length.
+        rng: numpy.random.Generator
+            Random generator.
+
+        Return:
+           numpy.ndarray of int labels.
+        """
+        return simulate_regime_path(transmat, init_dist, n_steps, rng)
+
+    def AccuracyReport(
+        self,
+        truth: np.ndarray,
+        estimates: np.ndarray,
+        probabilities: np.ndarray,
+        n_regimes: int,
+        top_k: int = 2,
+    ) -> dict[str, float]:
+        """
+        Accuracy and top-k accuracy.
+
+        Parameters:
+        truth: numpy.ndarray
+            True labels.
+        estimates: numpy.ndarray
+            Predicted labels.
+        probabilities: numpy.ndarray
+            Posterior scores (T, K).
+        n_regimes: int
+            Number of states.
+        top_k: int
+            k for top-k accuracy.
+
+        Return:
+           dict of float metrics.
+        """
+        return accuracy_report(truth, estimates, probabilities, n_regimes, top_k=top_k)
+

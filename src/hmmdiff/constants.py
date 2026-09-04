@@ -1,0 +1,118 @@
+"""Global pipeline constants.
+
+Hard-coded numeric and string defaults live here (not in call sites). YAML configs
+may override the same keys at runtime; tests may still use local literals.
+"""
+
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CONFIG_PATH = REPO_ROOT / "configs" / "default.yaml"
+EW_CONFIG_PATH = REPO_ROOT / "configs" / "ew.yaml"
+
+RAW_CSV_RELATIVE = "data/raw/benchmark_data.csv"
+DATE_COLUMN = "as_of"
+PRICE_COLUMN = "A001"
+SKIP_ROWS = 2100
+ASSET_COLUMNS = (
+    "A001",
+    "A004",
+    "A006",
+    "A008",
+    "A009",
+    "A011",
+    "A012",
+    "A013",
+    "A014",
+    "A015",
+)
+N_ASSETS = 10
+TRAIN_FRACTION = 0.75
+TRAIN_VAL_FRACTION = 0.75
+
+N_RETURNS = 5653
+N_TRAIN = 3395
+N_TEST = 2258
+START_DATE = "2001-01-01"
+TRAIN_END_DATE = "2014-01-03"
+TEST_START_DATE = "2014-01-06"
+END_DATE = "2022-08-31"
+DOWNSTREAM_TEST_START_YEAR = "2014"
+
+N_REGIMES = 5
+CHANGEPOINT_PENALTY = 18
+CLUSTERING_METHOD = "kmeans"
+CLUSTERING_SEED = 0
+EWM_COM = 0.5
+
+SEQ_LEN = 128
+ENC_IN = 10
+STRIDE = 1
+SHORT_POLICY = "tile"
+BATCH_SIZE = 32
+SAMPLE_MULTIPLIER = 8
+TRAIN_EPOCHS = 50
+LEARNING_RATE = 0.0027983303288563873
+LR_DECAY_ROUNDS = 10
+DIFFUSION_LOSS = "1.0-KL2_N+1.0-Corr+1.0-FFT"
+SCALE = "quantile"
+MIN_WINDOWS = 8
+DIFFUSION_TASK_NAME = "diffusion_denoised_x"
+DIFFUSION_MODEL_NAME = "UniTST_MP"
+DIFFUSION_DATA_NAME = "RegimeWindows"
+
+N_POOL = 128
+SAMPLE_STEP = 450
+TEMPERATURE = 0.7473231454237225
+SAMPLER = "DDPM"
+SAMPLE_METHOD = "discrete"
+DDIM_N_STEPS = 20
+DDIM_DISCRETIZE = "uniform"
+DDIM_ETA = 0.0
+OVERLAP_RATIO = 0.25
+
+HMM_NUM_WARMUP = 200
+HMM_NUM_SAMPLES = 100
+HMM_NUM_CHAINS = 1
+HMM_RNG_SEED = 1
+HMM_TOP_K = 2
+NEURAL_Z_DIM = 1
+NEURAL_HIDDEN_DIM = 10
+NEURAL_EMISSION_DIM = 1
+NEURAL_LEARNING_RATE = 0.1
+NEURAL_N_STEPS = 100
+NEURAL_SEED = 0
+SEMI_SUPERVISED_FRACTION = 0.5
+
+TRADING_DAYS = 252
+MVO_LOOKBACK = 60
+MVO_HORIZON = 60
+MVO_RANDOM_STATE = 42
+MVO_RIDGE = 1e-6
+HIGH_VOL_REGIMES = (2, 3, 4)
+HIGH_VOL_SHARE = 0.5
+METHODS = ("hmm-diffusion", "uncondi-diffusion")
+MIX_MODES = ("column", "row")
+OBJECTIVES = ("mean_variance", "min_variance", "max_sharpe", "max_return")
+VOL_MIX_PCT_MAX = 90
+MIX_GRID = tuple(range(0, 91, 10))
+TRAIN_TEST_SPLIT_FRACTION = 0.8
+RETURN_FEATURE_WINDOW = 5
+
+RF_N_ESTIMATORS = 200
+RF_MIN_SAMPLES_LEAF = 20
+RF_MAX_DEPTH = 8
+RF_KWARGS = {
+    "n_estimators": RF_N_ESTIMATORS,
+    "min_samples_leaf": RF_MIN_SAMPLES_LEAF,
+    "max_depth": RF_MAX_DEPTH,
+}
+
+NATIVE_STD_LO = 5e-4
+NATIVE_STD_HI = 0.05
+RATIO_LO = 0.1
+RATIO_HI = 10.0
+MEAN_ABS_CAP = 0.05
+
+HMM_DIFFUSION_COLOR = "#ff7f0e"
+UNCOND_DIFFUSION_COLOR = "#1f77b4"

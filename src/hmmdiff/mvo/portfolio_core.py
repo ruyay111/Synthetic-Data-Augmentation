@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-TRADING_DAYS = 252
+from hmmdiff.constants import MIX_MODES, OBJECTIVES, TRADING_DAYS
 
 
 def sharpe_ratio(r: np.ndarray, rf: float = 0.0) -> float:
@@ -46,6 +46,22 @@ def calmar_ratio(r: np.ndarray) -> float:
     return ann_ret / abs(mdd)
 
 
+def annualized_return(r: np.ndarray) -> float:
+    r = np.asarray(r, dtype=float)
+    r = r[np.isfinite(r)]
+    if r.size < 1:
+        return float("nan")
+    return float(r.mean() * TRADING_DAYS)
+
+
+def annualized_variance(r: np.ndarray) -> float:
+    r = np.asarray(r, dtype=float)
+    r = r[np.isfinite(r)]
+    if r.size < 2:
+        return float("nan")
+    return float(r.var(ddof=0) * TRADING_DAYS)
+
+
 def summarize_portfolio(port_ret: pd.Series, label: str = "ALL", rf: float = 0.0) -> dict:
     arr = np.asarray(port_ret, dtype=float)
     return {
@@ -57,9 +73,6 @@ def summarize_portfolio(port_ret: pd.Series, label: str = "ALL", rf: float = 0.0
         "ann_sd": float(np.nanstd(arr, ddof=0) * np.sqrt(TRADING_DAYS)),
         "n_obs": int(np.isfinite(arr).sum()),
     }
-
-
-OBJECTIVES = ("mean_variance", "min_variance", "max_sharpe", "max_return")
 
 
 def _apply_short_and_budget(weights: np.ndarray, allow_short: bool) -> np.ndarray:
@@ -210,9 +223,6 @@ def tile_to_length(arr: np.ndarray, length: int) -> np.ndarray:
         return arr[:length]
     reps = int(np.ceil(length / n))
     return np.concatenate([arr] * reps, axis=0)[:length]
-
-
-MIX_MODES = ("column", "row")
 
 
 def mix_train_with_regime_paths(

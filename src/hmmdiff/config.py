@@ -1,4 +1,8 @@
-"""Configuration loading and import bootstrapping."""
+"""Configuration loading and import bootstrapping.
+
+load_config, resolve, and config_path read YAML. Numeric defaults that are
+not file paths live in hmmdiff.constants.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +17,16 @@ DEFAULT_CONFIG = REPO_ROOT / "configs" / "default.yaml"
 
 
 def load_config(path: str | Path | None = None) -> dict[str, Any]:
-    """Read the YAML config. Defaults to ``configs/default.yaml``."""
+    """
+    Read the YAML config.
+
+    Parameters:
+    path: str, pathlib.Path, or None
+        Config file. Defaults to configs/default.yaml.
+
+    Return:
+       dict loaded from YAML.
+    """
     config_path = Path(path) if path is not None else DEFAULT_CONFIG
     if not config_path.is_absolute():
         config_path = REPO_ROOT / config_path
@@ -24,13 +37,33 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
 
 
 def resolve(path: str | Path) -> Path:
-    """Turn a config-relative path into an absolute one."""
+    """
+    Turn a config-relative path into an absolute one.
+
+    Parameters:
+    path: str or pathlib.Path
+        Path relative to the repo root, or already absolute.
+
+    Return:
+       pathlib.Path.
+    """
     candidate = Path(path)
     return candidate if candidate.is_absolute() else REPO_ROOT / candidate
 
 
 def config_path(cfg: dict[str, Any], key: str) -> Path:
-    """Resolve one entry of the config's ``paths`` block."""
+    """
+    Resolve one entry of the config's paths block.
+
+    Parameters:
+    cfg: dict
+        Loaded YAML mapping.
+    key: str
+        Name under cfg['paths'].
+
+    Return:
+       pathlib.Path.
+    """
     try:
         raw = cfg["paths"][key]
     except KeyError as exc:
@@ -39,12 +72,15 @@ def config_path(cfg: dict[str, Any], key: str) -> Path:
 
 
 def bootstrap_imports(diffusion: bool = False) -> None:
-    """Put the reference model packages and ``src`` on ``sys.path``.
+    """
+    Put the reference model packages and src on sys.path.
 
-    ``reference_model/hmmgan`` is always needed. The diffusion tree is opt-in because importing it pulls
-    in torch, which is slow and unnecessary for the HMM-only parts of the pipeline. Note that the
-    diffusion tree has no ``__init__.py`` files and expects its own root on ``sys.path`` so that
-    ``import src.exp...`` resolves; see ``reference_model/VENDORED.md``.
+    Parameters:
+    diffusion: bool
+        If true, also add reference_model/diffusion so import src.exp works.
+
+    Return:
+       None
     """
     entries = [REPO_ROOT / "src", REPO_ROOT / "reference_model"]
     if diffusion:

@@ -7,10 +7,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from hmmdiff.constants import N_ASSETS, SEQ_LEN
 from .specialist_sample import sample_simple_paths
-
-SEQ_LEN = 128
-N_ASSETS = 10
 
 
 def load_uncond_windows(path: Path, seq_len: int = SEQ_LEN, n_assets: int = N_ASSETS) -> np.ndarray:

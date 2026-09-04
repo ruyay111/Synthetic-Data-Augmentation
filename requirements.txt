@@ -1,37 +1,34 @@
-# HMM-Diffusion dependencies, loose bounds so the same file works on a CUDA box and on Apple Silicon.
-# requirements-ruya-freeze.txt holds the exact CUDA 12.4 versions the diffusion code was tuned on;
-# fall back to it if the resolution below misbehaves.
+# Pinned to the environment used for the EW pipeline (conda env `diff`).
+# On CUDA, install torch from the matching index first, for example:
+#   pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124
 
 # Core
-numpy>=1.24,<3
-pandas>=2.0
-scipy>=1.10
-scikit-learn>=1.3
-matplotlib>=3.7
-pyarrow>=14.0
-tqdm>=4.65
-PyYAML>=6.0
+numpy==2.0.2
+pandas==2.2.3
+scipy==1.14.1
+scikit-learn==1.5.2
+matplotlib==3.9.2
+pyarrow==18.0.0
+tqdm==4.67.0
+PyYAML==6.0.2
 
-# Diffusion stack.
-# On CUDA install torch from the appropriate index first, e.g.
-#   pip install torch --index-url https://download.pytorch.org/whl/cu124
-torch>=2.4
-einops>=0.7
-# Imported at trainer startup (losses.py / plotting.py), even when those terms are unused.
-geomloss>=0.2.6
-seaborn>=0.13
-tslearn>=0.6
+# Diffusion stack
+torch==2.5.1
+einops==0.8.0
+geomloss==0.2.6
+seaborn==0.13.2
+tslearn==0.6.3
 
-# Regime labeling (Vol_Regime): ARCH conditional volatility and PELT changepoints.
-arch>=6.2
-ruptures>=1.1
+# Regime labeling (Vol_Regime): ARCH conditional volatility and PELT changepoints
+arch==8.0.0
+ruptures==1.1.10
 
-# HMM fitting. NumPyro/JAX drives the three MCMC variants, Pyro drives the neural HMM.
-numpyro>=0.13
-jax>=0.4.20
-jaxlib>=0.4.20
-funsor>=0.4.5
-pyro-ppl>=1.8.6
+# HMM fitting. NumPyro/JAX drives the MCMC variants; Pyro drives the neural HMM
+numpyro==0.21.0
+jax==0.10.2
+jaxlib==0.10.2
+funsor==0.4.8
+pyro-ppl==1.9.1
 
-# Downstream volatility forecasting (Downstream-Volatility.ipynb).
-ta>=0.11
+# Downstream volatility / return forests
+ta==0.11.0

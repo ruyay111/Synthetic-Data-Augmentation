@@ -21,8 +21,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from hmmdiff.config import bootstrap_imports, config_path, load_config  # noqa: E402
-from hmmdiff.ew import build_ew_returns, ew_scale, save_ew_returns, split_counts  # noqa: E402
-from hmmdiff.regimes import fit_regimes, load_labels, save_labels  # noqa: E402
+from hmmdiff.data_collection.equal_weight_processor import EqualWeightProcessor  # noqa: E402
+from hmmdiff.data_collection.regime_processor import RegimeProcessor  # noqa: E402
 
 DEFAULT_CONFIG = "configs/ew.yaml"
 
@@ -38,9 +38,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def check_preprocessing(returns, cfg) -> dict:
-    expected = cfg["reference"]
-    actual = split_counts(returns)
+def check_preprocessing(returns, processor) -> dict:
+    expected = processor.cfg["reference"]
+    actual = processor.SplitCounts(returns)
     keys = [
         "n_returns",
         "n_train",
@@ -93,14 +93,16 @@ def main() -> int:
     args = parse_args()
     cfg = load_config(args.config)
     bootstrap_imports()
+    processor = EqualWeightProcessor(cfg)
+    regime_processor = RegimeProcessor()
 
     returns_path = config_path(cfg, "returns")
     labels_path = config_path(cfg, "regime_labels")
 
     print(f"[1/2] equal-weight standardized returns from {config_path(cfg, 'raw_csv')}")
-    returns = build_ew_returns(cfg)
-    actual = check_preprocessing(returns, cfg)
-    save_ew_returns(returns, returns_path)
+    returns = processor.BuildEwReturns(cfg)
+    actual = check_preprocessing(returns, processor)
+    processor.SaveEwReturns(returns, returns_path)
     print(f"[OK] wrote {returns_path}")
 
     if labels_path.exists() and not args.force:
@@ -109,7 +111,7 @@ def main() -> int:
             "       Relabeling invalidates data/processed/regime_windows_ew and every EW "
             "specialist."
         )
-        cached = load_labels(labels_path)
+        cached = regime_processor.LoadLabels(labels_path)
         meta = cached.metadata
         print(
             f"       cached: {meta['n_regimes_found']} regimes, "
@@ -124,11 +126,11 @@ def main() -> int:
         f"[2/2] labeling regimes on {len(series)} overlap days "
         f"(HMM coverage slice is first {n_train} train days)"
     )
-    regimes = fit_regimes(series, cfg, coverage_end=n_train)
-    scale = ew_scale(cfg)
+    regimes = regime_processor.FitRegimes(series, cfg, coverage_end=n_train)
+    scale = processor.EwScale(cfg)
     regimes = replace(regimes, metadata={**regimes.metadata, **scale})
     check_labels(regimes, cfg, n_train)
-    save_labels(regimes, labels_path)
+    regime_processor.SaveLabels(regimes, labels_path)
     print(f"[OK] wrote {labels_path}")
     return 0
 

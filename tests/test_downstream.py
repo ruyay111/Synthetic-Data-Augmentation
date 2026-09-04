@@ -14,11 +14,24 @@ sys.path.insert(0, str(REPO / "src"))
 
 from hmmdiff.downstream.bridge import build_uncond_synth_price_frame
 from hmmdiff.downstream.prediction import (
+    FEATURE_COLS,
+    RETURN_FEATURE_COLS,
+    RETURN_TARGET_COL,
+    VOL_FEATURE_COLS,
     VOL_LAG_FEATURE_COLS,
+    VOL_TARGET_COL,
+    build_advanced_return_features,
+    build_advanced_vol_features,
     build_vol_lag_features,
+    train_model_and_evaluate_advanced_return_mixture,
     train_vol_augmentation,
 )
 from hmmdiff.models import HMMFit, filter_states, simulate_regime_path
+
+try:
+    import ta  # noqa: F401
+except ImportError:
+    ta = None
 
 
 class UncondSynthPriceTests(unittest.TestCase):
@@ -79,6 +92,48 @@ class VolLagAugmentationTests(unittest.TestCase):
         self.assertTrue((rf.loc[rf["add_mult"] == 1.0, "n_synth_added"] == n_real).all())
         self.assertIn("persist", set(metrics["model"]))
         self.assertIn("har", set(metrics["model"]))
+
+
+@unittest.skipUnless(ta is not None, "ta is required for return mixture features")
+class ReturnMixtureTests(unittest.TestCase):
+    def test_return_target_is_forward_simple_return(self):
+        log_px = _log_price_frame(250, 0)
+        prices = pd.DataFrame({"A001": np.exp(log_px["A001_log"].to_numpy())}, index=log_px.index)
+        feat = build_advanced_return_features(prices, "A001", horizon=1)
+        self.assertEqual(list(FEATURE_COLS), list(VOL_FEATURE_COLS))
+        self.assertEqual(list(FEATURE_COLS), list(RETURN_FEATURE_COLS))
+        self.assertIn(RETURN_TARGET_COL, feat.columns)
+        for col in FEATURE_COLS:
+            self.assertIn(col, feat.columns)
+        self.assertNotIn("MA_21", FEATURE_COLS)
+        self.assertIn("Vol_63", FEATURE_COLS)
+        vol_feat = build_advanced_vol_features(prices, "A001", horizon=1)
+        for col in FEATURE_COLS:
+            self.assertIn(col, vol_feat.columns)
+        self.assertIn(VOL_TARGET_COL, vol_feat.columns)
+        t = feat.index[50]
+        nxt = prices.index[prices.index.get_loc(t) + 1]
+        expected = float(prices.loc[nxt, "A001"] / prices.loc[t, "A001"] - 1.0)
+        self.assertAlmostEqual(float(feat.loc[t, RETURN_TARGET_COL]), expected, places=10)
+
+    def test_return_mixture_runs_and_drops_empty_synth(self):
+        log_px = _log_price_frame(280, 0)
+        prices = pd.DataFrame({"A001": np.exp(log_px["A001_log"].to_numpy())}, index=log_px.index)
+        synth = pd.DataFrame(
+            {"A001": np.exp(_log_price_frame(280, 1)["A001_log"].to_numpy())},
+            index=prices.index,
+        )
+        metrics = train_model_and_evaluate_advanced_return_mixture(
+            prices,
+            synth,
+            price_col="A001",
+            horizon=1,
+            mix_grid=(0, 20),
+            plot_summary=False,
+            random_state=0,
+        )
+        self.assertEqual(set(metrics["synthetic_pct"]), {0, 20})
+        self.assertTrue(np.isfinite(metrics["r2"]).all())
 
 
 class FilterSimulateTests(unittest.TestCase):

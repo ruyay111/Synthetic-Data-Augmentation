@@ -135,17 +135,17 @@ def build_aligned_downstream_synth(
     n_regimes: int,
     df_real: pd.DataFrame,
     price_col: str = "A001",
-    state_method: str = "filter",
+    state_method: str = "smooth",
     train_emissions: np.ndarray | None = None,
     rng: np.random.Generator | None = None,
 ) -> AlignedDownstreamResult:
     """Stitch diffusion pools along HMM states on the benchmark period (2014+).
 
-    The supervised HMM is fit on pre-2014 inner training data only. ``state_method``:
+    The supervised HMM is fit on 2001–2014 train only. ``state_method``:
 
-    - ``filter``: causal forward filter (default). Optional ``train_emissions`` are
+    - ``smooth``: full-sample forward-backward (default; uses future emissions).
+    - ``filter``: causal forward filter. Optional ``train_emissions`` are
       filtered first so the 2014+ prior does not use later returns.
-    - ``smooth``: full-sample forward-backward (uses future emissions).
     - ``simulate``: sample a path from the transition matrix; no real 2014+ emissions.
     """
     emissions, dates = benchmark_emissions(returns, df_real.index)

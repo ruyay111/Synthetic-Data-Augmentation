@@ -1,4 +1,4 @@
-"""Rolling 60/60 MVO: hmm-diffusion vs mixed."""
+"""Rolling 60/60 MVO: hmm-diffusion vs uncondi-diffusion."""
 
 from __future__ import annotations
 
@@ -7,10 +7,13 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from hmmdiff.constants import HIGH_VOL_REGIMES as CONST_HIGH_VOL, HIGH_VOL_SHARE
 from .hmm_forecast import OpenLoopWalk
 from .mixed_sample import sample_uncond_simple_paths
 from .portfolio_core import (
     MIX_MODES,
+    annualized_return,
+    annualized_variance,
     calmar_ratio,
     collapse_weights,
     collapsed_column_means,
@@ -23,16 +26,15 @@ from .portfolio_core import (
 )
 from .specialist_sample import sample_simple_paths, sample_simple_rows, synth_rows_for_share
 
-HIGH_VOL_REGIMES = {3, 4}
-METHODS = ("hmm-diffusion", "mixed")
+HIGH_VOL_REGIMES = set(CONST_HIGH_VOL)
 
 
 def window_vol_bucket(true_labels: np.ndarray, high_vol_regimes: set[int] | None = None) -> str:
-    """High vol if at least half of the hold's true labels are in regimes 3 and 4."""
+    """High vol if at least half of the hold's true labels are in regimes 3 and 4"""
     labels = np.asarray(true_labels, dtype=int).reshape(-1)
     high = HIGH_VOL_REGIMES if high_vol_regimes is None else set(high_vol_regimes)
     share = float(np.isin(labels, list(high)).mean()) if labels.size else 0.0
-    return "high vol" if share >= 0.5 else "low vol"
+    return "high vol" if share >= HIGH_VOL_SHARE else "low vol"
 
 
 def _hold_seed(random_state: int, hold_start: int, n_synth: int) -> int:
@@ -162,15 +164,15 @@ def run_mvo_backtest(
         for n_synth in mix_grid:
             seed = _hold_seed(random_state, val_start, n_synth)
             rng_hmm = np.random.default_rng(seed)
-            rng_mixed = np.random.default_rng(seed)
+            rng_uncond = np.random.default_rng(seed)
             if mix_mode == "row":
                 share = float(n_synth) / 100.0
                 n_rows = synth_rows_for_share(lookback, share)
                 hmm_paths = sample_simple_rows(
                     specialist_pools[k_star], n_rows, horizon, rng_hmm
                 )
-                mixed_paths = sample_simple_rows(
-                    uncond_windows, n_rows, horizon, rng_mixed
+                uncond_paths = sample_simple_rows(
+                    uncond_windows, n_rows, horizon, rng_uncond
                 )
                 synth_pct = (
                     0.0
@@ -181,11 +183,11 @@ def run_mvo_backtest(
                 hmm_paths = sample_simple_paths(
                     specialist_pools[k_star], n_synth, horizon, rng_hmm
                 )
-                mixed_paths = sample_uncond_simple_paths(
-                    uncond_windows, n_synth, horizon, rng_mixed
+                uncond_paths = sample_uncond_simple_paths(
+                    uncond_windows, n_synth, horizon, rng_uncond
                 )
                 synth_pct = float(n_synth) * 10.0
-            for method, paths in (("hmm-diffusion", hmm_paths), ("mixed", mixed_paths)):
+            for method, paths in (("hmm-diffusion", hmm_paths), ("uncondi-diffusion", uncond_paths)):
                 weights = _weights_for_hold(
                     real_lb,
                     paths,
@@ -209,6 +211,8 @@ def run_mvo_backtest(
                         "bucket": bucket,
                         "sharpe": sharpe_ratio(port),
                         "calmar": calmar_ratio(port),
+                        "return": annualized_return(port),
+                        "variance": annualized_variance(port),
                         "n_obs": int(port.size),
                     }
                 )
@@ -225,6 +229,10 @@ def run_mvo_backtest(
                 sharpe_median=("sharpe", "median"),
                 calmar_mean=("calmar", "mean"),
                 calmar_median=("calmar", "median"),
+                return_mean=("return", "mean"),
+                return_median=("return", "median"),
+                variance_mean=("variance", "mean"),
+                variance_median=("variance", "median"),
             )
             .reset_index()
         )

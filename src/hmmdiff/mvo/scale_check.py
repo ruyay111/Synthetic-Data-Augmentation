@@ -7,11 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-NATIVE_STD_LO = 5e-4
-NATIVE_STD_HI = 0.05
-RATIO_LO = 0.1
-RATIO_HI = 10.0
-MEAN_ABS_CAP = 0.05
+from hmmdiff.constants import MEAN_ABS_CAP, NATIVE_STD_HI, NATIVE_STD_LO, RATIO_HI, RATIO_LO
 
 
 def _quantiles(values: np.ndarray) -> dict[str, float]:
@@ -78,7 +74,7 @@ def run_scale_check(
         frames.append(source_stats(np.expm1(stacked), stacked, asset_cols, "hmm-diffusion pools"))
 
     uncond_log = np.asarray(uncond_log, dtype=float)
-    frames.append(source_stats(np.expm1(uncond_log), uncond_log, asset_cols, "mixed"))
+    frames.append(source_stats(np.expm1(uncond_log), uncond_log, asset_cols, "uncondi-diffusion"))
 
     table = pd.concat(frames, ignore_index=True)
     messages: list[str] = []

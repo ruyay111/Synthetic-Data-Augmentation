@@ -1,4 +1,8 @@
-"""Mean-variance backtest helpers for hmm-diffusion vs mixed."""
+"""Mean-variance backtest helpers for hmm-diffusion vs uncondi-diffusion.
+
+PortfolioBacktest in testing_analytics is the class API. Functions here remain
+the standalone snake_case entry points used by notebooks.
+"""
 
 from .backtest import run_mvo_backtest, window_vol_bucket
 from .hmm_forecast import (

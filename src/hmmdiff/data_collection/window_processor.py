@@ -1,0 +1,331 @@
+"""Turn the labeled training series into per-regime training windows for the diffusion specialists.
+
+WindowProcessor cuts contiguous same-regime runs into seq_len windows. Short runs
+are cyclically tiled rather than dropped. Multivariate adaptation of the ruya
+window builder.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+
+def contiguous_runs(labels: np.ndarray) -> list[tuple[int, int, int]]:
+    """Half-open ``(start, end, regime)`` runs of constant label."""
+    if labels.size == 0:
+        return []
+    runs: list[tuple[int, int, int]] = []
+    start = 0
+    current = int(labels[0])
+    for idx, value in enumerate(labels[1:], start=1):
+        value = int(value)
+        if value != current:
+            runs.append((start, idx, current))
+            start = idx
+            current = value
+    runs.append((start, len(labels), current))
+    return runs
+
+
+def sliding_windows(block: np.ndarray, seq_len: int, stride: int) -> np.ndarray:
+    """All ``seq_len`` windows of a block, shape ``(n_windows, seq_len, n_channels)``."""
+    n_days, n_channels = block.shape
+    if n_days < seq_len:
+        return np.empty((0, seq_len, n_channels), dtype=float)
+    starts = range(0, n_days - seq_len + 1, stride)
+    return np.stack([block[s : s + seq_len] for s in starts], axis=0)
+
+
+def tiled_windows(block: np.ndarray, seq_len: int, stride: int) -> np.ndarray:
+    """Windows built by cyclically repeating a run shorter than ``seq_len``."""
+    n_days, n_channels = block.shape
+    if n_days == 0:
+        return np.empty((0, seq_len, n_channels), dtype=float)
+    if n_days >= seq_len:
+        return sliding_windows(block, seq_len, stride)
+    windows = []
+    for offset in range(0, n_days, max(1, stride)):
+        rotated = np.concatenate([block[offset:], block[:offset]], axis=0)
+        reps = int(np.ceil(seq_len / n_days))
+        windows.append(np.concatenate([rotated] * reps, axis=0)[:seq_len])
+    return np.stack(windows, axis=0)
+
+
+def build_windows(
+    panel: np.ndarray,
+    labels: np.ndarray,
+    cfg: dict[str, Any],
+    diag_series: np.ndarray | None = None,
+    label_name: str | None = None,
+) -> tuple[dict[int, np.ndarray], dict[str, Any]]:
+    """Cut per-regime windows from the labeled multivariate panel.
+
+    ``panel`` has shape ``(n_days, n_channels)``; ``labels`` are its regime labels. Returns windows
+    keyed by regime with shape ``(n_windows, seq_len, n_channels)``, plus a manifest.
+
+    ``diag_series`` is optional and aligned to ``panel``. When set, source/window moment diagnostics
+    use that series instead of the A001 channel. The A001 pipeline does not pass it.
+    """
+    if panel.ndim != 2:
+        raise ValueError(f"Expected panel shape (n_days, n_channels); got {panel.shape}")
+    if len(panel) != len(labels):
+        raise ValueError(f"panel has {len(panel)} days but labels have {len(labels)}")
+    if diag_series is not None:
+        diag_series = np.asarray(diag_series, dtype=float)
+        if diag_series.shape != (len(panel),):
+            raise ValueError(
+                f"diag_series has shape {diag_series.shape}, expected ({len(panel)},)"
+            )
+
+    seq_len = int(cfg["diffusion"]["seq_len"])
+    stride = int(cfg["diffusion"]["stride"])
+    n_regimes = int(cfg["regimes"]["n_regimes"])
+    short_policy = cfg["diffusion"]["short_policy"]
+    label_channel = cfg["data"]["asset_columns"].index(cfg["data"]["price_column"])
+
+    per_regime: dict[int, list[np.ndarray]] = {k: [] for k in range(n_regimes)}
+    per_regime_diag: dict[int, list[np.ndarray]] = {k: [] for k in range(n_regimes)}
+    stats = {
+        k: {"segments": 0, "segments_long": 0, "segments_tiled": 0, "windows_tiled": 0}
+        for k in range(n_regimes)
+    }
+
+    for start, end, regime in contiguous_runs(labels):
+        if not 0 <= regime < n_regimes:
+            raise ValueError(f"Unexpected regime label {regime}")
+        block = panel[start:end]
+        stats[regime]["segments"] += 1
+        if len(block) >= seq_len:
+            windows = sliding_windows(block, seq_len, stride)
+            stats[regime]["segments_long"] += 1
+        elif short_policy == "tile":
+            windows = tiled_windows(block, seq_len, stride)
+            stats[regime]["segments_tiled"] += 1
+            stats[regime]["windows_tiled"] += int(windows.shape[0])
+        else:
+            continue
+        if windows.shape[0]:
+            per_regime[regime].append(windows)
+            if diag_series is not None:
+                diag_block = diag_series[start:end, None]
+                if len(diag_block) >= seq_len:
+                    diag_windows = sliding_windows(diag_block, seq_len, stride)
+                else:
+                    diag_windows = tiled_windows(diag_block, seq_len, stride)
+                per_regime_diag[regime].append(diag_windows)
+
+    n_channels = int(panel.shape[1])
+    stacked = {
+        k: (
+            np.concatenate(per_regime[k], axis=0)
+            if per_regime[k]
+            else np.empty((0, seq_len, n_channels), dtype=float)
+        )
+        for k in range(n_regimes)
+    }
+    stacked_diag = None
+    if diag_series is not None:
+        stacked_diag = {
+            k: (
+                np.concatenate(per_regime_diag[k], axis=0)
+                if per_regime_diag[k]
+                else np.empty((0, seq_len, 1), dtype=float)
+            )
+            for k in range(n_regimes)
+        }
+    manifest = _build_manifest(
+        panel,
+        labels,
+        stacked,
+        stats,
+        cfg,
+        label_channel=label_channel,
+        diag_series=diag_series,
+        diag_windows=stacked_diag,
+        label_name=label_name,
+    )
+    return stacked, manifest
+
+
+def _build_manifest(
+    panel: np.ndarray,
+    labels: np.ndarray,
+    windows: dict[int, np.ndarray],
+    stats: dict[int, dict[str, int]],
+    cfg: dict[str, Any],
+    label_channel: int,
+    diag_series: np.ndarray | None = None,
+    diag_windows: dict[int, np.ndarray] | None = None,
+    label_name: str | None = None,
+) -> dict[str, Any]:
+    assets = list(cfg["data"]["asset_columns"])
+    regimes: dict[str, Any] = {}
+    for k, block in windows.items():
+        source = panel[labels == k]
+        if diag_series is not None:
+            label_source = diag_series[labels == k]
+            diag_block = diag_windows[k] if diag_windows is not None else np.empty(0)
+            window_values = diag_block.reshape(-1) if diag_block.size else np.empty(0)
+        else:
+            label_source = source[:, label_channel] if source.size else np.empty(0)
+            window_values = block[:, :, label_channel].reshape(-1) if block.size else np.empty(0)
+        regimes[str(k)] = {
+            "n_windows": int(block.shape[0]),
+            "n_days": int(source.shape[0]),
+            **stats[k],
+            "source_mean": float(label_source.mean()) if label_source.size else float("nan"),
+            "source_var": float(label_source.var()) if label_source.size else float("nan"),
+            "window_mean": float(window_values.mean()) if window_values.size else float("nan"),
+            "window_var": float(window_values.var()) if window_values.size else float("nan"),
+        }
+    return {
+        "seq_len": int(cfg["diffusion"]["seq_len"]),
+        "stride": int(cfg["diffusion"]["stride"]),
+        "short_policy": cfg["diffusion"]["short_policy"],
+        "n_regimes": int(cfg["regimes"]["n_regimes"]),
+        "n_channels": int(panel.shape[1]),
+        "assets": assets,
+        "label_asset": label_name or cfg["data"]["price_column"],
+        "label_channel": int(label_channel),
+        "return_units": "raw_log_returns",
+        "n_days": int(panel.shape[0]),
+        "regimes": regimes,
+    }
+
+
+def save_windows(
+    windows: dict[int, np.ndarray], manifest: dict[str, Any], output_dir: Path
+) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for regime, block in windows.items():
+        filename = f"regime_{regime}.npy"
+        np.save(output_dir / filename, block)
+        manifest["regimes"][str(regime)]["path"] = filename
+    (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+
+def load_manifest(output_dir: Path) -> dict[str, Any]:
+    path = output_dir / "manifest.json"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} not found. Run scripts/02_build_diffusion_dataset.py first."
+        )
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+class WindowProcessor:
+    """Cut per-regime diffusion windows from a labeled multivariate panel."""
+
+    def ContiguousRuns(self, labels: np.ndarray) -> list[tuple[int, int, int]]:
+        """
+        Half-open (start, end, regime) runs of constant label.
+
+        Parameters:
+        labels: numpy.ndarray
+            Integer regime path.
+
+        Return:
+           list of (start, end, regime) tuples.
+        """
+        return contiguous_runs(labels)
+
+    def SlidingWindows(self, block: np.ndarray, seq_len: int, stride: int) -> np.ndarray:
+        """
+        All seq_len windows of a block.
+
+        Parameters:
+        block: numpy.ndarray
+            Shape (n_days, n_channels).
+        seq_len: int
+            Window length.
+        stride: int
+            Step between window starts.
+
+        Return:
+           numpy.ndarray of shape (n_windows, seq_len, n_channels).
+        """
+        return sliding_windows(block, seq_len, stride)
+
+    def TiledWindows(self, block: np.ndarray, seq_len: int, stride: int) -> np.ndarray:
+        """
+        Windows built by cyclically repeating a run shorter than seq_len.
+
+        Parameters:
+        block: numpy.ndarray
+            Shape (n_days, n_channels).
+        seq_len: int
+            Target window length.
+        stride: int
+            Rotation stride.
+
+        Return:
+           numpy.ndarray of tiled windows.
+        """
+        return tiled_windows(block, seq_len, stride)
+
+    def BuildWindows(
+        self,
+        panel: np.ndarray,
+        labels: np.ndarray,
+        cfg: dict[str, Any],
+        diag_series: np.ndarray | None = None,
+        label_name: str | None = None,
+    ) -> tuple[dict[int, np.ndarray], dict[str, Any]]:
+        """
+        Cut per-regime windows from the labeled multivariate panel.
+
+        Parameters:
+        panel: numpy.ndarray
+            Shape (n_days, n_channels).
+        labels: numpy.ndarray
+            Regime labels aligned to panel.
+        cfg: dict
+            Pipeline config with diffusion and regimes keys.
+        diag_series: numpy.ndarray or None
+            Optional 1-d series for moment diagnostics.
+        label_name: str or None
+            Name recorded in the manifest.
+
+        Return:
+           tuple of (windows keyed by regime, manifest dict).
+        """
+        return build_windows(
+            panel, labels, cfg, diag_series=diag_series, label_name=label_name
+        )
+
+    def SaveWindows(
+        self, windows: dict[int, np.ndarray], manifest: dict[str, Any], output_dir: Path
+    ) -> None:
+        """
+        Write per-regime npy files and manifest.json.
+
+        Parameters:
+        windows: dict
+            Regime index to window array.
+        manifest: dict
+            Window metadata.
+        output_dir: pathlib.Path
+            Output directory.
+
+        Return:
+           None
+        """
+        save_windows(windows, manifest, output_dir)
+
+    def LoadManifest(self, output_dir: Path) -> dict[str, Any]:
+        """
+        Read manifest.json from a window directory.
+
+        Parameters:
+        output_dir: pathlib.Path
+            Directory written by SaveWindows.
+
+        Return:
+           dict manifest.
+        """
+        return load_manifest(output_dir)
+
